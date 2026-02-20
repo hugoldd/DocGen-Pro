@@ -8,7 +8,6 @@ import VariablesPage from "./pages/config/VariablesPage";
 import WorkflowEngine from "./pages/workflow/WorkflowEngine";
 import HistoryPage from "./pages/history/History";
 import PlanningPage from "./pages/planning/PlanningPage";
-import SettingsPage from "./pages/Settings";
 
 export const router = createBrowserRouter([
   {
@@ -19,7 +18,6 @@ export const router = createBrowserRouter([
       { path: "templates", Component: TemplateList },
       { path: "templates/new", Component: TemplateEditor },
       { path: "templates/:id", Component: TemplateEditor },
-      { path: "settings", Component: SettingsPage },
       { path: "configuration", Component: ProjectConfig },
       { path: "variables", Component: VariablesPage },
       { path: "workflow", Component: WorkflowEngine },

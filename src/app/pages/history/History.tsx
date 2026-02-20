@@ -4,10 +4,13 @@ import {
   Download,
   Eye,
   RefreshCw,
+  Loader2,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router';
 import { useApp } from '../../context/AppContext';
-import type { GenerationRecord, TemplateType } from '../../types';
+import type { GenerationRecord, GeneratedFile, TemplateType } from '../../types';
 import PlanningView from '../../components/PlanningView';
 import {
   Dialog,
@@ -16,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog';
+import { Button } from '../../components/ui/button';
 
 const PAGE_SIZE = 10;
 
@@ -46,7 +50,7 @@ const escapeCsv = (value: string) => {
 export default function HistoryPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { projectTypes, getRecords } = useApp();
+  const { projectTypes, templates, getRecords, deleteRecord } = useApp();
   const records = getRecords();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -54,6 +58,9 @@ export default function HistoryPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'error'>('all');
   const [page, setPage] = useState(1);
   const [selectedRecord, setSelectedRecord] = useState<GenerationRecord | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [downloadingByIndex, setDownloadingByIndex] = useState<Record<number, boolean>>({});
+  const [deleteMode, setDeleteMode] = useState(false);
 
   const isFiltersActive =
     !!searchTerm.trim() || projectFilter !== '' || statusFilter !== 'all';
@@ -94,6 +101,23 @@ export default function HistoryPage() {
       setSelectedRecord(record);
     }
   }, [location.state, records]);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.shiftKey && event.altKey && event.key === 'H') {
+        setDeleteMode((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, []);
+
+  useEffect(() => {
+    if (!toastMessage) return undefined;
+    const timer = window.setTimeout(() => setToastMessage(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [toastMessage]);
 
   const totalResults = filteredRecords.length;
   const totalPages = Math.max(1, Math.ceil(totalResults / PAGE_SIZE));
@@ -137,8 +161,62 @@ export default function HistoryPage() {
     setStatusFilter('all');
   };
 
+  const handleRedownload = async (
+    doc: GeneratedFile,
+    record: GenerationRecord,
+    index: number
+  ) => {
+    const projectType = projectTypes.find((pt) => pt.id === record.projectTypeId);
+    const template = templates.find((t) => t.id === doc.templateId);
+
+    if (!template) {
+      setToastMessage('Template introuvable');
+      return;
+    }
+
+    setDownloadingByIndex((prev) => ({ ...prev, [index]: true }));
+    try {
+      const clientValues = {
+        nom_client: record.clientName,
+        numero_client: record.clientNumber,
+        type_projet: projectType?.name ?? '',
+        contact_name: record.contacts?.[0]?.name ?? '',
+        contact_email: record.contacts?.[0]?.email ?? '',
+        ...(record.answers || {}),
+      };
+
+      const { generateFile } = await import('../../utils/fileGenerator');
+      const blob = await generateFile(template, clientValues);
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = doc.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      setToastMessage('Erreur lors de la génération');
+    } finally {
+      setDownloadingByIndex((prev) => ({ ...prev, [index]: false }));
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {toastMessage && (
+        <div className="fixed right-6 top-6 z-50 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-lg">
+          {toastMessage}
+        </div>
+      )}
+      {deleteMode && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          <AlertTriangle className="h-4 w-4" />
+          Mode suppression actif — Shift+Alt+H pour quitter
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Historique des générations</h1>
@@ -282,6 +360,20 @@ export default function HistoryPage() {
                         >
                           <RefreshCw className="w-4 h-4" />
                         </button>
+                        {deleteMode && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm('Supprimer cette entrée ?')) {
+                                deleteRecord(record.id);
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -458,9 +550,24 @@ export default function HistoryPage() {
                             <p className="text-sm font-medium text-slate-900">{file.name}</p>
                             <p className="text-xs text-slate-500 font-mono">{file.destinationPath}</p>
                           </div>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${fileTypeBadgeClass(file.type)}`}>
-                            {file.type}
-                          </span>
+                          <div className="flex items-center gap-3">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${fileTypeBadgeClass(file.type)}`}>
+                              {file.type}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRedownload(file, selectedRecord, idx)}
+                              className="text-slate-500 hover:text-slate-900"
+                            >
+                              {downloadingByIndex[idx] ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Download className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
                         </div>
                       ))
                     )}
@@ -485,6 +592,7 @@ export default function HistoryPage() {
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   Calendar,
   X,
   Play,
+  Download,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type {
@@ -59,6 +60,8 @@ import {
   SelectValue,
 } from '../../components/ui/select';
 import { Separator } from '../../components/ui/separator';
+import { Button } from '../../components/ui/button';
+import { exportSingleProjectType } from '../../utils/settingsExport';
 
 const genId = () => Math.random().toString(36).slice(2, 10);
 
@@ -441,6 +444,16 @@ const ProjectConfig = () => {
                   <Pencil className="h-3 w-3" />
                   Modifier
                 </button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => exportSingleProjectType(project)}
+                  className="inline-flex items-center gap-2"
+                >
+                  <Download className="h-3 w-3" />
+                  Exporter
+                </Button>
                 <button
                   type="button"
                   onClick={() => handleDelete(project.id)}

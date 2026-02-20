@@ -1,7 +1,8 @@
 ﻿import React, { useMemo, useState } from 'react';
-import { CalendarDays, CalendarOff, FileText, HelpCircle, Mail } from 'lucide-react';
+import { CalendarDays, CalendarOff, FileText, HelpCircle, Mail, CheckCheck } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useApp } from '../../context/AppContext';
+import { Button } from '../../components/ui/button';
 
 type PlanningItemType = 'email' | 'document' | 'question';
 
@@ -82,7 +83,21 @@ export default function PlanningPage() {
   } = useApp();
   const records = getRecords();
   const [projectFilter, setProjectFilter] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('month');
+  const [showSent, setShowSent] = useState(false);
+
+  const availableClients = useMemo(() => {
+    const seen = new Set<string>();
+    const clients: { name: string; number: string }[] = [];
+    records.forEach((r) => {
+      if (!seen.has(r.clientNumber)) {
+        seen.add(r.clientNumber);
+        clients.push({ name: r.clientName, number: r.clientNumber });
+      }
+    });
+    return clients.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  }, [records]);
 
   const planningItems = useMemo(() => {
     const now = new Date();
@@ -102,6 +117,7 @@ export default function PlanningPage() {
 
     return records
       .filter((record) => (projectFilter ? record.projectTypeId === projectFilter : true))
+      .filter((record) => (clientFilter ? record.clientNumber === clientFilter : true))
       .flatMap((record) => {
         const projectTypeName =
           projectTypes.find((pt) => pt.id === record.projectTypeId)?.name || 'Type inconnu';
@@ -161,8 +177,13 @@ export default function PlanningPage() {
         return [...emails, ...documents, ...questions];
       })
       .filter((item) => inPeriod(new Date(item.date)))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [records, projectFilter, projectTypes, periodFilter]);
+      .filter((item) => (showSent ? true : !item.isSent))
+      .sort((a, b) => {
+        const byClient = a.clientName.localeCompare(b.clientName, 'fr');
+        if (byClient !== 0) return byClient;
+        return new Date(a.date).getTime() - new Date(b.date).getTime();
+      });
+  }, [records, projectFilter, clientFilter, projectTypes, periodFilter, showSent]);
 
   const groupedByWeek = useMemo<WeekGroup[]>(() => {
     const groups = new Map<string, WeekGroup>();
@@ -260,36 +281,59 @@ export default function PlanningPage() {
             Emails, documents et questions planifiés, regroupés par semaine.
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-          <div className="text-sm text-slate-500">
+        <div className="flex flex-col sm:items-end gap-3">
+          <div className="text-sm text-slate-500 text-right">
             Total planifiés : <span className="font-semibold text-slate-900">{totalItems}</span>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold uppercase text-slate-500">Période</label>
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold uppercase text-slate-500">Période</label>
+              <select
+                value={periodFilter}
+                onChange={(event) => setPeriodFilter(event.target.value as PeriodFilter)}
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+              >
+                {(['all', 'month', 'next30', 'past'] as PeriodFilter[]).map((option) => (
+                  <option key={option} value={option}>
+                    {getPeriodLabel(option)}
+                  </option>
+                ))}
+              </select>
+            </div>
             <select
-              value={periodFilter}
-              onChange={(event) => setPeriodFilter(event.target.value as PeriodFilter)}
+              value={projectFilter}
+              onChange={(event) => setProjectFilter(event.target.value)}
               className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
             >
-              {(['all', 'month', 'next30', 'past'] as PeriodFilter[]).map((option) => (
-                <option key={option} value={option}>
-                  {getPeriodLabel(option)}
+              <option value="">Tous les projets</option>
+              {projectTypes.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
                 </option>
               ))}
             </select>
+            <select
+              value={clientFilter}
+              onChange={(event) => setClientFilter(event.target.value)}
+              className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+            >
+              <option value="">Tous les clients</option>
+              {availableClients.map((client) => (
+                <option key={client.number} value={client.number}>
+                  {client.name}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              variant={showSent ? 'default' : 'outline'}
+              onClick={() => setShowSent((prev) => !prev)}
+              className="inline-flex items-center gap-2"
+            >
+              <CheckCheck className="h-4 w-4" />
+              {showSent ? 'Masquer les envoyés' : 'Voir les envoyés'}
+            </Button>
           </div>
-          <select
-            value={projectFilter}
-            onChange={(event) => setProjectFilter(event.target.value)}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-          >
-            <option value="">Tous les projets</option>
-            {projectTypes.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 

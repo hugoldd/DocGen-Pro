@@ -24,6 +24,7 @@ interface AppContextType {
   updateVariable: (key: string, label: string) => void;
   deleteVariable: (key: string) => void;
   addRecord: (record: AddRecordPayload) => void;
+  deleteRecord: (id: string) => void;
   getRecords: () => GenerationRecord[];
   markEmailAsSent: (recordId: string, emailId: string) => void;
   unmarkEmailAsSent: (recordId: string, emailId: string) => void;
@@ -390,6 +391,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setRecords((prev) => [newRecord, ...prev]);
   };
 
+  const deleteRecord = (id: string) => {
+    setRecords((prev) => prev.filter((record) => record.id !== id));
+  };
+
   const getRecords = () => records;
 
   const markEmailAsSent = (recordId: string, emailId: string) => {
@@ -468,6 +473,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateVariable,
         deleteVariable,
         addRecord,
+        deleteRecord,
         getRecords,
         markEmailAsSent,
         unmarkEmailAsSent,

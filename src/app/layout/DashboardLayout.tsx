@@ -10,7 +10,8 @@ import {
   Menu,
   Bell,
   ChevronRight,
-  Search
+  Search,
+  User
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useApp } from '../context/AppContext';
@@ -55,15 +56,6 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="p-4 border-t border-slate-800">
-        <NavLink
-          to="/settings"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800 hover:text-white text-slate-400 transition-colors"
-        >
-          <Settings className="w-5 h-5" />
-          <span className="font-medium text-sm">Paramètres</span>
-        </NavLink>
-      </div>
     </aside>
   );
 }
@@ -252,15 +244,45 @@ export function Header() {
     return results.slice(0, 3);
   }, [records, normalizedQuery, canSearch]);
 
+  const contactResults = useMemo(() => {
+    if (!canSearch) return [];
+    const seen = new Set<string>();
+    const results: { label: string; sub: string; recordId: string }[] = [];
+    records.forEach((record) => {
+      (record.contacts || []).forEach((contact) => {
+        const searchableContact = [contact.name, contact.email, contact.role]
+          .join(' ')
+          .toLowerCase();
+        if (!searchableContact.includes(normalizedQuery)) return;
+        const key = contact.email || contact.name;
+        if (seen.has(key)) return;
+        seen.add(key);
+        results.push({
+          label: contact.name || contact.email || '',
+          sub: contact.email || contact.role || '',
+          recordId: record.id,
+        });
+      });
+    });
+    return results.slice(0, 3);
+  }, [canSearch, records, normalizedQuery]);
+
   const hasResults =
     historyResults.length +
       templateResults.length +
       projectTypeResults.length +
-      planningResults.length >
+      planningResults.length +
+      contactResults.length >
     0;
 
   const handleResultClick = (path: string) => {
     navigate(path);
+    setSearchQuery('');
+    setShowResults(false);
+  };
+
+  const handleContactClick = (recordId: string) => {
+    navigate('/history', { state: { openRecordId: recordId } });
     setSearchQuery('');
     setShowResults(false);
   };
@@ -371,6 +393,24 @@ export function Header() {
                       >
                         <div className="font-medium text-slate-900">{email.label}</div>
                         <div className="text-xs text-slate-500">{email.clientName}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {contactResults.length > 0 && (
+                  <div>
+                    <div className="px-4 pt-3 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-2">
+                      <User className="w-4 h-4 text-slate-400" />
+                      Interlocuteurs
+                    </div>
+                    {contactResults.map((contact, idx) => (
+                      <button
+                        key={`${contact.recordId}-${idx}`}
+                        onClick={() => handleContactClick(contact.recordId)}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50"
+                      >
+                        <div className="font-medium text-slate-900">{contact.label}</div>
+                        <div className="text-xs text-slate-500">{contact.sub}</div>
                       </button>
                     ))}
                   </div>

@@ -25,6 +25,9 @@ Application web de gestion et génération automatisée de documents contractuel
 
 ## Fonctionnalités principales
 
+### Login / Accès
+- Accès protégé par login hardcodé (configurable via .env.local)
+
 ### Types de projets
 - Création et édition via une modal plein écran multi-sections (Identité, Questions prérequis, Règles documents & emails, Planning)
 - Options configurables par projet (ex. : assurance, support 24/7)
@@ -46,6 +49,8 @@ Application web de gestion et génération automatisée de documents contractuel
 ### Planning
 - Planning multi-types : **emails**, **documents**, **questions**
 - Vue calendaire avec badges colorés et filtres par période (7j / 30j / 90j)
+- Filtre client sur les éléments planifiés
+- Toggle "Voir les envoyés" pour inclure/exclure les entrées déjà envoyées
 - État "envoyé" persisté par entrée dans l'historique
 - Marquage / démarquage individuel ou en masse
 
@@ -59,9 +64,12 @@ Application web de gestion et génération automatisée de documents contractuel
 - Liste complète des générations avec statut (succès / erreur)
 - Recherche et filtres avancés
 - Accès direct depuis le dashboard
+- Re-téléchargement des fichiers générés depuis le détail
+- Mode suppression via raccourci Shift+Alt+H
 
 ### Recherche globale
 - Barre de recherche dans le header couvrant : historique, templates, types de projets, planning
+- Interlocuteurs inclus dans les résultats (nom / email / rôle)
 
 ### Bibliothèque de variables
 - Gestion centralisée des variables `{{clé}}` utilisées dans les templates
@@ -123,6 +131,8 @@ src/
 ```
 
 ---
+
+⚠️ Ne pas commiter .env.local — contient les credentials d'accès
 
 ## Licence
 
