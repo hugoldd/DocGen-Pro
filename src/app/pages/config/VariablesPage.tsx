@@ -13,17 +13,29 @@ import {
   AlertDialogTrigger,
 } from '../../components/ui/alert-dialog';
 
-const SYSTEM_KEYS = [
-  'nom_client',
-  'numero_client',
-  'contact_name',
-  'contact_email',
-  'type_projet',
-];
+const SYSTEM_VARIABLES: Record<string, { label: string; group?: string }> = {
+  nom_client: { label: 'Nom du client' },
+  numero_client: { label: 'Numéro client' },
+  type_projet: { label: 'Type de projet' },
+  contact_1_nom: { label: 'Contact 1 - Nom', group: 'Interlocuteurs' },
+  contact_1_email: { label: 'Contact 1 - Email', group: 'Interlocuteurs' },
+  contact_1_role: { label: 'Contact 1 - Rôle', group: 'Interlocuteurs' },
+  contact_1_telephone: { label: 'Contact 1 - Téléphone', group: 'Interlocuteurs' },
+  contact_2_nom: { label: 'Contact 2 - Nom', group: 'Interlocuteurs' },
+  contact_2_email: { label: 'Contact 2 - Email', group: 'Interlocuteurs' },
+  contact_2_role: { label: 'Contact 2 - Rôle', group: 'Interlocuteurs' },
+  contact_2_telephone: { label: 'Contact 2 - Téléphone', group: 'Interlocuteurs' },
+  contact_3_nom: { label: 'Contact 3 - Nom', group: 'Interlocuteurs' },
+  contact_3_email: { label: 'Contact 3 - Email', group: 'Interlocuteurs' },
+  contact_3_role: { label: 'Contact 3 - Rôle', group: 'Interlocuteurs' },
+  contact_3_telephone: { label: 'Contact 3 - Téléphone', group: 'Interlocuteurs' },
+};
+
+const SYSTEM_KEYS = Object.keys(SYSTEM_VARIABLES);
 
 export default function VariablesPage() {
   const { variables, addVariable, updateVariable, deleteVariable } = useApp();
-  const [searchTerm, setSearchTerm] = useState('');
+  const [search, setSearch] = useState('');
   const [newKey, setNewKey] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [newErrors, setNewErrors] = useState<{ key?: string; label?: string }>({});
@@ -31,15 +43,30 @@ export default function VariablesPage() {
   const [editingLabel, setEditingLabel] = useState('');
   const [editError, setEditError] = useState('');
 
-  const entries = useMemo(() => Object.entries(variables), [variables]);
+  const entries = useMemo(() => {
+    const base = Object.entries(variables).map(([key, label]) => ({
+      key,
+      label,
+      group: SYSTEM_VARIABLES[key]?.group,
+      isSystem: !!SYSTEM_VARIABLES[key],
+    }));
+    Object.entries(SYSTEM_VARIABLES).forEach(([key, meta]) => {
+      if (!base.some((entry) => entry.key === key)) {
+        base.push({ key, label: meta.label, group: meta.group, isSystem: true });
+      }
+    });
+    return base;
+  }, [variables]);
 
   const filteredEntries = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) return entries;
-    return entries.filter(([key, label]) => {
-      return key.toLowerCase().includes(term) || label.toLowerCase().includes(term);
-    });
-  }, [entries, searchTerm]);
+    const term = search.trim().toLowerCase();
+    const base = term
+      ? entries.filter(({ key, label }) => {
+          return key.toLowerCase().includes(term) || label.toLowerCase().includes(term);
+        })
+      : entries;
+    return [...base].sort((a, b) => a.key.localeCompare(b.key));
+  }, [entries, search]);
 
   const resetNewForm = () => {
     setNewKey('');
@@ -56,7 +83,7 @@ export default function VariablesPage() {
       nextErrors.label = 'Le libellé est obligatoire.';
     }
     const normalized = newKey.trim().toLowerCase();
-    const hasDuplicate = entries.some(([key]) => key.toLowerCase() === normalized);
+    const hasDuplicate = entries.some((entry) => entry.key.toLowerCase() === normalized);
     if (normalized && hasDuplicate) {
       nextErrors.key = 'Cette clé existe déjà.';
     }
@@ -95,29 +122,31 @@ export default function VariablesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Bibliothèque de variables</h1>
           <p className="text-slate-500 text-sm mt-1">
             Définissez les balises utilisables dans vos templates et formulaires.
           </p>
         </div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-        <div className="p-4 border-b border-slate-200 flex items-center gap-4">
-          <div className="relative flex-1 max-w-md">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-full min-w-[220px] max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
               placeholder="Rechercher une variable..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
             />
           </div>
+          <span className="text-sm text-slate-500 whitespace-nowrap">
+            {filteredEntries.length} variable(s)
+          </span>
         </div>
+      </div>
 
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50 text-slate-500 text-xs font-semibold uppercase">
@@ -128,70 +157,85 @@ export default function VariablesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredEntries.map(([key, label]) => {
-                const isSystem = SYSTEM_KEYS.includes(key);
-                const isEditing = editingKey === key;
+              {filteredEntries.map((entry, index) => {
+                const isSystem = entry.isSystem;
+                const isEditing = editingKey === entry.key;
+                const showGroupHeader =
+                  entry.group &&
+                  (index === 0 || filteredEntries[index - 1].group !== entry.group);
                 return (
-                  <tr key={key} className="group hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <code className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs text-indigo-600 font-mono">
-                          {`{{${key}}}`}
-                        </code>
-                        {isSystem && (
-                          <span className="px-2 py-0.5 text-xs rounded-full bg-slate-200 text-slate-600 border border-slate-300">
-                            Système
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {isEditing ? (
-                        <div>
-                          <input
-                            type="text"
-                            value={editingLabel}
-                            onChange={(e) => setEditingLabel(e.target.value)}
-                            className="w-full px-3 py-2 border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                          />
-                          {editError && <p className="text-xs text-red-500 mt-1">{editError}</p>}
+                  <React.Fragment key={entry.key}>
+                    {showGroupHeader && (
+                      <tr>
+                        <td
+                          colSpan={3}
+                          className="px-6 py-2 text-xs font-semibold uppercase text-slate-500 bg-slate-50"
+                        >
+                          {entry.group}
+                        </td>
+                      </tr>
+                    )}
+                    <tr className="group hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <code className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs text-indigo-600 font-mono">
+                            {`{{${entry.key}}}`}
+                          </code>
+                          {isSystem && (
+                            <span className="px-2 py-0.5 text-xs rounded-full bg-slate-200 text-slate-600 border border-slate-300">
+                              Système
+                            </span>
+                          )}
                         </div>
-                      ) : (
-                        <span className="text-sm font-medium text-slate-900">{label}</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
+                      </td>
+                      <td className="px-6 py-4">
                         {isEditing ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={confirmEdit}
-                              className="p-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
-                              title="Confirmer"
-                            >
-                              <Save className="w-4 h-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={cancelEdit}
-                              className="p-1.5 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-100 transition-colors"
-                              title="Annuler"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </>
+                          <div>
+                            <input
+                              type="text"
+                              value={editingLabel}
+                              onChange={(e) => setEditingLabel(e.target.value)}
+                              className="w-full px-3 py-2 border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                            />
+                            {editError && <p className="text-xs text-red-500 mt-1">{editError}</p>}
+                          </div>
                         ) : (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => startEdit(key, label)}
-                              className="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-indigo-50 transition-colors"
-                              title="Modifier"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            {!isSystem && (
+                          <span className="text-sm font-medium text-slate-900">{entry.label}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          {isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={confirmEdit}
+                                className="p-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
+                                title="Confirmer"
+                              >
+                                <Save className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEdit}
+                                className="p-1.5 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-100 transition-colors"
+                                title="Annuler"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : isSystem ? (
+                            <span className="text-xs font-medium text-slate-500">Système</span>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => startEdit(entry.key, entry.label)}
+                                className="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-indigo-50 transition-colors"
+                                title="Modifier"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
                                   <button
@@ -206,23 +250,23 @@ export default function VariablesPage() {
                                   <AlertDialogHeader>
                                     <AlertDialogTitle>Supprimer cette variable ?</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                      Cette action est définitive. La variable "{key}" sera supprimée.
+                                      Cette action est définitive. La variable "{entry.key}" sera supprimée.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
                                     <AlertDialogCancel>Annuler</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => deleteVariable(key)}>
+                                    <AlertDialogAction onClick={() => deleteVariable(entry.key)}>
                                       Supprimer
                                     </AlertDialogAction>
                                   </AlertDialogFooter>
                                 </AlertDialogContent>
                               </AlertDialog>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  </React.Fragment>
                 );
               })}
 

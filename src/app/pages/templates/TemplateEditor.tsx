@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Save, ChevronLeft, Eye, FileText, X } from 'lucide-react';
+import { Save, ChevronLeft, Eye, FileText, X, Braces, Search } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
 import { useApp } from '../../context/AppContext';
 import type { TemplateType } from '../../types';
@@ -14,8 +14,27 @@ import {
 } from '../../components/ui/dialog';
 
 const TEMPLATE_TYPES: TemplateType[] = ['DOCX', 'XLSX', 'PDF', 'EMAIL'];
-const CLIENT_KEYS = ['nom_client', 'numero_client', 'contact_name', 'contact_email'];
-const PROJECT_KEYS = ['type_projet'];
+const SYSTEM_VARIABLES: Record<string, string> = {
+  nom_client: 'Nom du client',
+  numero_client: 'Numéro client',
+  type_projet: 'Type de projet',
+  contact_1_nom: 'Contact 1 - Nom',
+  contact_1_email: 'Contact 1 - Email',
+  contact_1_role: 'Contact 1 - Rôle',
+  contact_1_telephone: 'Contact 1 - Téléphone',
+  contact_2_nom: 'Contact 2 - Nom',
+  contact_2_email: 'Contact 2 - Email',
+  contact_2_role: 'Contact 2 - Rôle',
+  contact_2_telephone: 'Contact 2 - Téléphone',
+  contact_3_nom: 'Contact 3 - Nom',
+  contact_3_email: 'Contact 3 - Email',
+  contact_3_role: 'Contact 3 - Rôle',
+  contact_3_telephone: 'Contact 3 - Téléphone',
+};
+const CLIENT_KEYS = ['nom_client', 'numero_client', 'type_projet'];
+const CONTACT_KEYS = Object.keys(SYSTEM_VARIABLES).filter((key) =>
+  key.startsWith('contact_')
+);
 
 const extractVariables = (content: string): string[] => {
   const matches = content.match(/\{\{\s*([a-zA-Z0-9_\-]+)\s*\}\}/g) || [];
@@ -69,6 +88,8 @@ export default function TemplateEditor() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [previewOpen, setPreviewOpen] = useState(false);
   const [activeField, setActiveField] = useState<'subject' | 'content'>('content');
+  const [showVariables, setShowVariables] = useState(false);
+  const [variablesSearch, setVariablesSearch] = useState('');
 
   const isEditMode = !!id;
   const template = useMemo(
@@ -96,20 +117,43 @@ export default function TemplateEditor() {
     setErrors({});
   }, [isEditMode, template]);
 
-  const groupedVariables = useMemo(() => {
-    const keys = Object.keys(variables);
-    const client = keys.filter((key) => CLIENT_KEYS.includes(key));
-    const project = keys.filter((key) => PROJECT_KEYS.includes(key));
-    const other = keys.filter(
-      (key) => !CLIENT_KEYS.includes(key) && !PROJECT_KEYS.includes(key)
-    );
+  const variableSections = useMemo(() => {
+    const clientItems = CLIENT_KEYS.map((key) => ({
+      key,
+      label: SYSTEM_VARIABLES[key] || key,
+    }));
+    const contactItems = CONTACT_KEYS.map((key) => ({
+      key,
+      label: SYSTEM_VARIABLES[key] || key,
+    }));
+    const dictionaryItems = Object.keys(variables)
+      .sort((a, b) => a.localeCompare(b))
+      .map((key) => ({
+        key,
+        label: variables[key] || key,
+      }));
 
     return [
-      { label: 'Infos client', keys: client },
-      { label: 'Infos projet', keys: project },
-      { label: 'Autres', keys: other },
+      { label: 'Client', items: clientItems },
+      { label: 'Interlocuteurs', items: contactItems },
+      { label: 'Dictionnaire', items: dictionaryItems },
     ];
   }, [variables]);
+
+  const filteredVariableSections = useMemo(() => {
+    const term = variablesSearch.trim().toLowerCase();
+    if (!term) return variableSections;
+    return variableSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter(
+          (item) =>
+            item.key.toLowerCase().includes(term) ||
+            item.label.toLowerCase().includes(term)
+        ),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [variableSections, variablesSearch]);
 
   const previewContent = resolveVariables(form.content || '', variables);
 
@@ -266,6 +310,14 @@ export default function TemplateEditor() {
           <div className="flex items-center gap-3">
             <button
               type="button"
+              onClick={() => setShowVariables((prev) => !prev)}
+              className="px-4 py-2 text-slate-600 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors inline-flex items-center gap-2"
+            >
+              <Braces className="w-4 h-4" />
+              Balises
+            </button>
+            <button
+              type="button"
               onClick={() => setPreviewOpen(true)}
               className="px-4 py-2 text-slate-600 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors inline-flex items-center gap-2"
             >
@@ -291,7 +343,7 @@ export default function TemplateEditor() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
+      <div className="grid grid-cols-1 gap-6">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -462,7 +514,9 @@ export default function TemplateEditor() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Contenu</label>
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <label className="block text-sm font-medium text-slate-700">Contenu</label>
+            </div>
             <textarea
               ref={textareaRef}
               value={form.content}
@@ -481,46 +535,54 @@ export default function TemplateEditor() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-900">Variables disponibles</h2>
-            <p className="text-xs text-slate-500">Cliquez pour insérer</p>
-          </div>
+      </div>
 
-          <div className="space-y-4">
-            {groupedVariables.map((group) => (
-              <div key={group.label}>
+      {showVariables && (
+        <aside className="fixed top-24 right-6 w-80 max-h-[calc(100vh-6rem)] bg-white border border-slate-200 rounded-xl shadow-lg p-4 flex flex-col z-40">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Rechercher une balise..."
+              value={variablesSearch}
+              onChange={(e) => setVariablesSearch(e.target.value)}
+              className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+            />
+          </div>
+          <div className="mt-4 space-y-4 overflow-auto overflow-y-auto flex-1">
+            {filteredVariableSections.map((section) => (
+              <div key={section.label}>
                 <h3 className="text-xs font-semibold text-slate-400 uppercase mb-2">
-                  {group.label}
+                  {section.label}
                 </h3>
-                {group.keys.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">Aucune variable.</p>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {group.keys.map((key) => (
+                <div className="space-y-1">
+                  {section.items.map((item) => (
+                    <div
+                      key={`${section.label}-${item.key}`}
+                      className="flex items-center justify-between gap-2 py-1 border-b border-slate-100 last:border-0"
+                    >
                       <button
-                        key={key}
                         type="button"
-                        onClick={() => handleInsertVariable(key)}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+                        onClick={() => handleInsertVariable(item.key)}
+                        className="font-mono text-xs text-indigo-500 hover:text-indigo-700 shrink-0"
+                        title={item.label}
                       >
-                        <span className="font-mono text-xs text-indigo-500">{`{{${key}}}`}</span>
-                        <span className="flex-1 text-left truncate">{variables[key]}</span>
+                        {`{{${item.key}}}`}
                       </button>
-                    ))}
-                  </div>
-                )}
+                      <span className="text-xs text-slate-400 truncate max-w-[140px] text-right">
+                        {item.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
-
-            {Object.keys(variables).length === 0 && (
-              <p className="text-sm text-slate-500 italic">
-                Aucune variable disponible pour le moment.
-              </p>
+            {filteredVariableSections.length === 0 && (
+              <p className="text-sm text-slate-500 italic">Aucune balise trouvée.</p>
             )}
           </div>
-        </div>
-      </div>
+        </aside>
+      )}
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="max-w-2xl">

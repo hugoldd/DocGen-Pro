@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Braces,
   Check,
   ChevronRight,
   User,
@@ -15,6 +16,7 @@ import {
   Plus,
   Trash2,
   Calendar,
+  Search,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../../lib/utils';
@@ -81,13 +83,15 @@ const getInitialState = (): WizardState => ({
 });
 
 export default function WorkflowEngine() {
-  const { projectTypes, templates, addRecord } = useApp();
+  const { projectTypes, templates, addRecord, variables } = useApp();
   const location = useLocation();
   const [step, setStep] = useState(1);
   const [state, setState] = useState<WizardState>(getInitialState());
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState('');
   const [toastMessage, setToastMessage] = useState('');
+  const [showVariables, setShowVariables] = useState(false);
+  const [variablesSearch, setVariablesSearch] = useState('');
 
   const publishedProjectTypes = useMemo(
     () => projectTypes.filter((pt) => pt.status === 'published'),
@@ -104,6 +108,7 @@ export default function WorkflowEngine() {
         answers: Record<string, string>;
         selectedOptionIds: string[];
         context: string;
+        deploymentDate: string;
       }>;
     })?.prefill;
     if (!prefill) return;
@@ -121,6 +126,7 @@ export default function WorkflowEngine() {
       selectedOptionIds: hasProjectType ? (prefill.selectedOptionIds || []) : [],
       answers: hasProjectType ? (prefill.answers || {}) : {},
       context: prefill.context ?? prev.context,
+      deploymentDate: prefill.deploymentDate ?? prev.deploymentDate,
     }));
   }, [location.state, projectTypes]);
 
@@ -130,7 +136,11 @@ export default function WorkflowEngine() {
   );
 
   const hasPlanning = !!(
-    selectedProjectType?.emailSchedule?.length && state.deploymentDate
+    state.deploymentDate && (
+      selectedProjectType?.emailSchedule?.length ||
+      selectedProjectType?.documentSchedule?.length ||
+      selectedProjectType?.questionSchedule?.length
+    )
   );
   const totalSteps = hasPlanning ? 6 : 5;
   const effectiveStep = !hasPlanning && step === 6 ? 5 : step;
@@ -151,6 +161,18 @@ export default function WorkflowEngine() {
       type_projet: selectedProjectType?.name || '',
       contact_name: state.contacts[0]?.name || '',
       contact_email: state.contacts[0]?.email || '',
+      contact_1_nom: state.contacts[0]?.name || '',
+      contact_1_email: state.contacts[0]?.email || '',
+      contact_1_role: state.contacts[0]?.role || '',
+      contact_1_telephone: state.contacts[0]?.phone || '',
+      contact_2_nom: state.contacts[1]?.name || '',
+      contact_2_email: state.contacts[1]?.email || '',
+      contact_2_role: state.contacts[1]?.role || '',
+      contact_2_telephone: state.contacts[1]?.phone || '',
+      contact_3_nom: state.contacts[2]?.name || '',
+      contact_3_email: state.contacts[2]?.email || '',
+      contact_3_role: state.contacts[2]?.role || '',
+      contact_3_telephone: state.contacts[2]?.phone || '',
       ...state.answers,
     }),
     [
@@ -181,6 +203,29 @@ export default function WorkflowEngine() {
       );
     },
     [selectedProjectType, hasPlanning, state.deploymentDate, clientValues, templates]
+  );
+
+  const scheduledDocuments = useMemo<NonNullable<GenerationRecord['scheduledDocuments']>>(
+    () => {
+      if (!selectedProjectType || !state.deploymentDate) return [];
+      return buildScheduledDocuments(
+        selectedProjectType,
+        state.deploymentDate,
+        templates
+      );
+    },
+    [selectedProjectType, state.deploymentDate, templates]
+  );
+
+  const scheduledQuestions = useMemo<NonNullable<GenerationRecord['scheduledQuestions']>>(
+    () => {
+      if (!selectedProjectType || !state.deploymentDate) return [];
+      return buildScheduledQuestions(
+        selectedProjectType,
+        state.deploymentDate
+      );
+    },
+    [selectedProjectType, state.deploymentDate]
   );
 
   useEffect(() => {
@@ -217,10 +262,78 @@ export default function WorkflowEngine() {
     templates,
   ]);
 
-  const showToast = (message: string) => {
+  const showToast = (message: string, duration = 2000) => {
     setToastMessage(message);
-    window.setTimeout(() => setToastMessage(''), 2000);
+    window.setTimeout(() => setToastMessage(''), duration);
   };
+
+  const handleCopy = async (key: string) => {
+    try {
+      await navigator.clipboard.writeText(`{{${key}}}`);
+    } catch {
+      // ignore clipboard errors
+    }
+    showToast('Copié !', 1500);
+  };
+
+  const variableSections = useMemo(() => {
+    const clientKeys = ['nom_client', 'numero_client', 'type_projet'];
+    const interlocutorKeys = [
+      'contact_1_nom',
+      'contact_1_email',
+      'contact_1_role',
+      'contact_1_telephone',
+      'contact_2_nom',
+      'contact_2_email',
+      'contact_2_role',
+      'contact_2_telephone',
+      'contact_3_nom',
+      'contact_3_email',
+      'contact_3_role',
+      'contact_3_telephone',
+    ];
+
+    const dictionaryEntries = Object.keys(variables).map((key) => ({
+      key,
+      label: variables[key] || '',
+    }));
+    const responseEntries =
+      selectedProjectType?.questions.map((q) => ({ key: q.id, label: q.label })) || [];
+
+    return [
+      {
+        label: 'Client',
+        items: clientKeys.map((key) => ({ key, label: variables[key] || '' })),
+      },
+      {
+        label: 'Interlocuteurs',
+        items: interlocutorKeys.map((key) => ({ key, label: variables[key] || '' })),
+      },
+      {
+        label: 'Dictionnaire',
+        items: dictionaryEntries,
+      },
+      {
+        label: 'Réponses',
+        items: responseEntries,
+      },
+    ];
+  }, [selectedProjectType, variables]);
+
+  const filteredVariableSections = useMemo(() => {
+    const term = variablesSearch.trim().toLowerCase();
+    if (!term) return variableSections;
+    return variableSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => {
+          const keyMatch = item.key.toLowerCase().includes(term);
+          const labelMatch = (item.label || '').toLowerCase().includes(term);
+          return keyMatch || labelMatch;
+        }),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [variableSections, variablesSearch]);
 
   const goNext = () => {
     setStep((prev) => {
@@ -271,7 +384,11 @@ export default function WorkflowEngine() {
     return true;
   }, [state.clientName, state.clientNumber, state.contacts]);
 
-  const requiresDeploymentDate = !!selectedProjectType?.emailSchedule?.length;
+  const requiresDeploymentDate = !!(
+    selectedProjectType?.emailSchedule?.length ||
+    selectedProjectType?.documentSchedule?.length ||
+    selectedProjectType?.questionSchedule?.length
+  );
   const canProceedStep2 =
     !!state.selectedProjectTypeId && (!requiresDeploymentDate || !!state.deploymentDate);
 
@@ -331,6 +448,17 @@ export default function WorkflowEngine() {
           {toastMessage}
         </div>
       )}
+
+      <div className="flex items-center justify-end mb-4">
+        <button
+          type="button"
+          onClick={() => setShowVariables((prev) => !prev)}
+          className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 transition-colors inline-flex items-center gap-2"
+        >
+          <Braces className="w-4 h-4" />
+          Balises
+        </button>
+      </div>
 
       <div className="mb-8">
         <div className="flex items-center justify-between relative">
@@ -417,6 +545,8 @@ export default function WorkflowEngine() {
               {step === 5 && hasPlanning && (
                 <StepPlanning
                   scheduledEmails={scheduledEmails}
+                  scheduledDocuments={scheduledDocuments}
+                  scheduledQuestions={scheduledQuestions}
                   deploymentDate={state.deploymentDate}
                 />
               )}
@@ -502,10 +632,68 @@ export default function WorkflowEngine() {
           </div>
         )}
 
-        {step === 4 && generationError && (
-          <div className="px-6 pb-6 text-sm text-red-600">{generationError}</div>
-        )}
+      {step === 4 && generationError && (
+        <div className="px-6 pb-6 text-sm text-red-600">{generationError}</div>
+      )}
       </div>
+
+      {showVariables && (
+        <aside className="fixed top-24 right-6 w-80 max-h-[calc(100vh-6rem)] bg-white border border-slate-200 rounded-xl shadow-lg p-4 flex flex-col z-40">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Rechercher une balise..."
+              value={variablesSearch}
+              onChange={(e) => setVariablesSearch(e.target.value)}
+              className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+            />
+          </div>
+          <div className="mt-4 space-y-4 overflow-auto overflow-y-auto flex-1">
+            {filteredVariableSections.map((section) => (
+              <div key={section.label}>
+                <h3 className="text-xs font-semibold text-slate-400 uppercase mb-2">
+                  {section.label}
+                </h3>
+                <div className="space-y-1">
+                  {section.items.map((item) => {
+                    const isResponses = section.label === 'Réponses';
+                    const resolvedValue = isResponses
+                      ? (state.answers[item.key] || '')
+                      : (clientValues as Record<string, string>)[item.key] || '';
+                    const displayValue = resolvedValue
+                      ? resolvedValue.length > 20
+                        ? `${resolvedValue.slice(0, 20)}…`
+                        : resolvedValue
+                      : '—';
+                    return (
+                      <div
+                        key={`${section.label}-${item.key}`}
+                        className="flex items-center justify-between gap-2 py-1 border-b border-slate-100 last:border-0"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(item.key)}
+                          className="font-mono text-xs text-indigo-500 hover:text-indigo-700 shrink-0"
+                          title={item.label || item.key}
+                        >
+                          {isResponses ? item.label || item.key : `{{${item.key}}}`}
+                        </button>
+                        <span className="text-xs text-slate-400 truncate max-w-[120px] text-right">
+                          {displayValue}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            {filteredVariableSections.length === 0 && (
+              <p className="text-sm text-slate-500 italic">Aucune balise trouvée.</p>
+            )}
+          </div>
+        </aside>
+      )}
     </div>
   );
 }
@@ -638,7 +826,11 @@ function StepProjectSelection({
   projectTypes: ProjectType[];
 }) {
   const selectedProject = projectTypes.find((pt) => pt.id === state.selectedProjectTypeId);
-  const hasSchedule = !!selectedProject?.emailSchedule?.length;
+  const hasSchedule = !!(
+    selectedProject?.emailSchedule?.length ||
+    selectedProject?.documentSchedule?.length ||
+    selectedProject?.questionSchedule?.length
+  );
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
@@ -717,12 +909,11 @@ function StepProjectSelection({
                         }))
                       }
                     />
-                    <div className="ml-3">
-                      <span className="font-medium text-slate-700 block">{opt.label}</span>
-                      <span className="text-xs text-slate-400 font-mono">{opt.id}</span>
-                    </div>
-                  </label>
-                ))}
+                  <div className="ml-3">
+                    <span className="font-medium text-slate-700 block">{opt.label}</span>
+                  </div>
+                </label>
+              ))}
             </div>
           ) : (
             <p className="text-slate-500 italic text-sm">Aucune option disponible pour ce projet.</p>
@@ -788,14 +979,17 @@ function StepQuestions({
                 {q.label} {q.required && <span className="text-red-500">*</span>}
               </label>
 
-              {q.answerType === 'text' && (
+                            {q.answerType === 'text' && (
                 <input
                   type="text"
                   className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                   placeholder="Réponse..."
                   value={state.answers[q.id] || ''}
                   onChange={(e) =>
-                    updateState((prev) => ({ ...prev, answers: { ...prev.answers, [q.id]: e.target.value } }))
+                    updateState((prev) => ({
+                      ...prev,
+                      answers: { ...prev.answers, [q.id]: e.target.value },
+                    }))
                   }
                 />
               )}
@@ -807,7 +1001,10 @@ function StepQuestions({
                   placeholder="0"
                   value={state.answers[q.id] || ''}
                   onChange={(e) =>
-                    updateState((prev) => ({ ...prev, answers: { ...prev.answers, [q.id]: e.target.value } }))
+                    updateState((prev) => ({
+                      ...prev,
+                      answers: { ...prev.answers, [q.id]: e.target.value },
+                    }))
                   }
                 />
               )}
@@ -818,7 +1015,10 @@ function StepQuestions({
                     className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none appearance-none bg-white"
                     value={state.answers[q.id] || ''}
                     onChange={(e) =>
-                      updateState((prev) => ({ ...prev, answers: { ...prev.answers, [q.id]: e.target.value } }))
+                      updateState((prev) => ({
+                        ...prev,
+                        answers: { ...prev.answers, [q.id]: e.target.value },
+                      }))
                     }
                   >
                     <option value="">Sélectionner...</option>
@@ -841,7 +1041,10 @@ function StepQuestions({
                       value="Oui"
                       checked={state.answers[q.id] === 'Oui'}
                       onChange={() =>
-                        updateState((prev) => ({ ...prev, answers: { ...prev.answers, [q.id]: 'Oui' } }))
+                        updateState((prev) => ({
+                          ...prev,
+                          answers: { ...prev.answers, [q.id]: 'Oui' },
+                        }))
                       }
                     />
                     Oui
@@ -853,7 +1056,10 @@ function StepQuestions({
                       value="Non"
                       checked={state.answers[q.id] === 'Non'}
                       onChange={() =>
-                        updateState((prev) => ({ ...prev, answers: { ...prev.answers, [q.id]: 'Non' } }))
+                        updateState((prev) => ({
+                          ...prev,
+                          answers: { ...prev.answers, [q.id]: 'Non' },
+                        }))
                       }
                     />
                     Non
@@ -926,12 +1132,20 @@ function StepSummary({
               <div>
                 <span className="text-slate-500 block text-xs uppercase">Options actives</span>
                 <div className="flex flex-wrap gap-1 mt-1">
-                  {state.selectedOptionIds.length > 0 ? (
-                    state.selectedOptionIds.map((optId) => (
-                      <span key={optId} className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs border border-indigo-200">
-                        {projectType?.options.find((o) => o.id === optId)?.label || optId}
-                      </span>
-                    ))
+                    {state.selectedOptionIds.length > 0 ? (
+                    state.selectedOptionIds
+                      .map((optId) =>
+                        projectType?.options.find((o) => o.id === optId)?.label
+                      )
+                      .filter((label): label is string => Boolean(label))
+                      .map((label) => (
+                        <span
+                          key={label}
+                          className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs border border-indigo-200"
+                        >
+                          {label}
+                        </span>
+                      ))
                   ) : (
                     <span className="text-slate-400 italic">Aucune</span>
                   )}
@@ -1038,9 +1252,13 @@ function StepSummary({
 
 function StepPlanning({
   scheduledEmails,
+  scheduledDocuments,
+  scheduledQuestions,
   deploymentDate,
 }: {
   scheduledEmails: NonNullable<GenerationRecord['scheduledEmails']>;
+  scheduledDocuments: NonNullable<GenerationRecord['scheduledDocuments']>;
+  scheduledQuestions: NonNullable<GenerationRecord['scheduledQuestions']>;
   deploymentDate: string;
 }) {
   return (
@@ -1051,7 +1269,12 @@ function StepPlanning({
           Vérifiez les dates prévues avant de finaliser la génération.
         </p>
       </div>
-      <PlanningView scheduledEmails={scheduledEmails} deploymentDate={deploymentDate} />
+      <PlanningView
+        scheduledEmails={scheduledEmails}
+        scheduledDocuments={scheduledDocuments}
+        scheduledQuestions={scheduledQuestions}
+        deploymentDate={deploymentDate}
+      />
     </div>
   );
 }
@@ -1126,6 +1349,30 @@ function StepSuccess({
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

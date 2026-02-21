@@ -26,25 +26,29 @@ Application web de gestion et génération automatisée de documents contractuel
 ## Fonctionnalités principales
 
 ### Login / Accès
-- Accès protégé par login hardcodé (configurable via .env.local)
+- Accès protégé par login via PocketBase auth (ou hardcodé via `.env.local` en dev)
 
 ### Types de projets
-- Création et édition via une modal plein écran multi-sections (Identité, Questions prérequis, Règles documents & emails, Planning)
+- Création et édition via un **wizard 7 étapes** en page dédiée :
+  - Identité, Options, Questions prérequis, Règles documents, Règles emails, Planning, Simulation
 - Options configurables par projet (ex. : assurance, support 24/7)
 - Conditions sur les règles et questions : déclenchement selon les options sélectionnées
-- Bouton **Simuler** : visualisation en temps réel des règles et questions activées selon les options cochées
+- Planning : règles J-X / J+X / "Générer lors de la prise en charge" / "Rappel utilisateur"
+- Étape Simulation : aperçu planning chronologique + règles activées selon options cochées
 - Publication / brouillon avec badge de statut
 
 ### Templates
 - Types supportés : **DOCX**, **XLSX**, **PDF**, **EMAIL**
-- Éditeur avec variables `{{variable}}` et autocomplétion
+- Éditeur avec panneau balises (bouton toggle) et insertion au curseur
 - Import de fichier base64 (DOCX/XLSX/PDF existants)
 - Duplication et gestion du statut (brouillon / publié)
 
 ### Workflow de génération
-- Prise en charge en 6 étapes guidées : sélection du type de projet, options, questions, génération, planning, confirmation
+- Prise en charge en 6 étapes guidées : informations client, type de projet, questions, récapitulatif, planning, confirmation
+- Panneau balises disponibles avec valeurs résolues en temps réel
 - Génération DOCX via docxtemplater, PDF via pdfmake, EMAIL au format `.eml` (MIME `message/rfc822`)
 - Les emailRules sont incluses dans le plan de génération au même titre que les documentRules
+- Noms de fichiers générés automatiquement : `{nom_client} - {nom_template}`
 
 ### Planning
 - Planning multi-types : **emails**, **documents**, **questions**
@@ -53,11 +57,12 @@ Application web de gestion et génération automatisée de documents contractuel
 - Toggle "Voir les envoyés" pour inclure/exclure les entrées déjà envoyées
 - État "envoyé" persisté par entrée dans l'historique
 - Marquage / démarquage individuel ou en masse
+- Éléments "Générer lors de la prise en charge" visibles dans le planning
 
 ### Dashboard
 - Statistiques cliquables (projets actifs, templates publiés, générations du mois, emails planifiés)
 - Activité récente avec accès direct aux enregistrements
-- Cloche de notifications : emails imminents, erreurs de génération
+- Cloche de notifications : emails, documents et questions imminents (7 jours)
 - Compteur d'emails du mois courant
 
 ### Historique
@@ -73,6 +78,9 @@ Application web de gestion et génération automatisée de documents contractuel
 
 ### Bibliothèque de variables
 - Gestion centralisée des variables `{{clé}}` utilisées dans les templates
+- Variables système non supprimables : client, interlocuteurs (contact_1/2/3), projet
+- Barre de recherche, tri alphabétique, compteur
+- Détection de doublons à la création
 - Ajout / modification / suppression avec validation
 
 ---
@@ -95,7 +103,7 @@ npm install
 npm run dev
 ```
 
-L'application est accessible sur `http://localhost:5173`.
+L'application est accessible sur `http://localhost:5173/DocGen-Pro/`.
 
 ### Build de production
 
@@ -108,10 +116,12 @@ Les fichiers compilés sont générés dans le dossier `dist/`.
 ### Déploiement GitHub Pages
 
 ```bash
-npm run deploy
+git add .
+git commit -m "feat: description"
+git push origin main
 ```
 
-Publie automatiquement le contenu de `dist/` sur la branche `gh-pages`.
+GitHub Actions déclenche automatiquement le build et le déploiement sur `gh-pages`.
 
 ---
 
@@ -120,10 +130,12 @@ Publie automatiquement le contenu de `dist/` sur la branche `gh-pages`.
 ```
 src/
 ├── app/
-│   ├── components/       # Composants réutilisables (UI shadcn, PlanningView…)
+│   ├── components/       # Composants réutilisables (PlanningView, VariablePickerButton…)
 │   ├── context/          # AppContext — état global + localStorage
-│   ├── layout/           # DashboardLayout (sidebar + header)
-│   ├── pages/            # Pages : Dashboard, Templates, Config, History, Planning, Workflow
+│   ├── hooks/            # useInsertAtCursor
+│   ├── layout/           # DashboardLayout (sidebar + header + notifications)
+│   ├── pages/            # Dashboard, Templates, Config, History, Planning, Workflow
+│   │   └── config/       # ProjectConfig + ProjectWizard (wizard 7 étapes)
 │   ├── types/            # Types TypeScript (Template, ProjectType, GenerationRecord…)
 │   └── utils/            # engine.ts (logique métier), fileGenerator.ts (génération fichiers)
 ├── lib/                  # Utilitaires (cn / twMerge)
@@ -132,7 +144,7 @@ src/
 
 ---
 
-⚠️ Ne pas commiter .env.local — contient les credentials d'accès
+⚠️ Ne pas commiter `.env.local` — contient les credentials d'accès
 
 ## Licence
 

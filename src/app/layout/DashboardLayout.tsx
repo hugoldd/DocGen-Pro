@@ -131,7 +131,7 @@ export function Header() {
 
   type Notif = {
     id: string;
-    type: 'email-imminent' | 'email-week' | 'generation-error';
+    type: 'email-imminent' | 'email-week' | 'doc-imminent' | 'question-imminent' | 'generation-error';
     label: string;
     description: string;
     route: string;
@@ -139,6 +139,7 @@ export function Header() {
 
   const notifications = useMemo<Notif[]>(() => {
     const now = new Date();
+    now.setHours(0, 0, 0, 0);
     const soon = new Date(now);
     soon.setDate(now.getDate() + 2);
     const week = new Date(now);
@@ -149,6 +150,7 @@ export function Header() {
     records.forEach((record) => {
       record.scheduledEmails?.forEach((email) => {
         const emailDate = new Date(email.date);
+        emailDate.setHours(0, 0, 0, 0);
         if (Number.isNaN(emailDate.getTime())) return;
         const isSent = record.sentEmailIds?.includes(email.id) || false;
         if (isSent) return;
@@ -166,6 +168,36 @@ export function Header() {
             type: 'email-week',
             label: 'Email cette semaine',
             description: `${email.label} — ${record.clientName}`,
+            route: '/planning',
+          });
+        }
+      });
+
+      record.scheduledDocuments?.forEach((doc) => {
+        const docDate = new Date(doc.date);
+        docDate.setHours(0, 0, 0, 0);
+        if (Number.isNaN(docDate.getTime())) return;
+        if (docDate >= now && docDate <= week) {
+          items.push({
+            id: `doc-${record.id}-${doc.id}`,
+            type: 'doc-imminent',
+            label: 'Document à générer',
+            description: `${doc.label} — ${record.clientName}`,
+            route: '/planning',
+          });
+        }
+      });
+
+      record.scheduledQuestions?.forEach((q) => {
+        const qDate = new Date(q.date);
+        qDate.setHours(0, 0, 0, 0);
+        if (Number.isNaN(qDate.getTime())) return;
+        if (qDate >= now && qDate <= week) {
+          items.push({
+            id: `question-${record.id}-${q.id}`,
+            type: 'question-imminent',
+            label: 'Question à traiter',
+            description: `${q.label} — ${record.clientName}`,
             route: '/planning',
           });
         }

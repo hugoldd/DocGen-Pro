@@ -1,59 +1,124 @@
-# Documentation du Workflow DocGen Pro
+# Règles de travail — Workflow IA & Dev
 
-Cette application permet de configurer des projets, de définir des templates et d'exécuter des processus de génération de documents.
+## Outils
 
-## 1. Gestion des Données (Configuration Initiale)
+| Outil | Rôle |
+|-------|------|
+| **Claude** (ce chat) | Product owner / tech lead : specs, règles de gestion, review de code, validation |
+| **Claude Code** | Développement principal, lecture et modification directe des fichiers du repo |
+| **Codex** | Développement en complément si besoin, sur instruction de Claude |
+| **GitHub** | Versionning et déploiement, branche unique `main` |
 
-Avant de configurer un projet, il est nécessaire de définir les briques de base :
+---
 
-### A. Dictionnaire de Variables (`/variables`)
-*   **Objectif** : Définir toutes les données dynamiques qui seront utilisées dans l'application.
-*   **Fonctionnement** : 
-    *   Créez une variable (ex: `client_name`, `montant_projet`).
-    *   Définissez son type (Texte, Nombre, Date, etc.).
-    *   **Lien** : Ces variables sont ensuite utilisées dans l'**Éditeur de Template** et les **Questions du Projet**.
+## Workflow standard
 
-### B. Bibliothèque de Templates (`/templates`)
-*   **Objectif** : Créer les modèles de documents et d'emails.
-*   **Fonctionnement** :
-    *   Créez un template (Document ou Email).
-    *   Utilisez l'éditeur pour insérer du texte et des variables dynamiques (ex: `{{client_name}}`).
-    *   Les variables disponibles proviennent du **Dictionnaire de Variables**.
+```
+1. CLARIFICATION
+   Claude pose les questions fonctionnelles avant tout dev
+   Zéro ambiguïté avant d'écrire le prompt
 
-## 2. Configuration de Projet (`/configuration`)
+2. PROMPT
+   Claude rédige le prompt précis pour Claude Code ou Codex
+   Découpage en sous-tâches si la feature est complexe
 
-C'est le cœur du module administratif. Un projet relie des questions, des options et des templates.
+3. DEV
+   Claude Code exécute sur les fichiers réels du repo
+   Retour synthétique en 3 lignes max + fichiers modifiés
 
-### Workflow de configuration :
-1.  **Identité** : Définissez le nom, le code et la catégorie du projet.
-2.  **Options** : Ajoutez des options commerciales (ex: "Assurance", "Support 24/7").
-3.  **Questions Prérequis** : 
-    *   Définissez les questions à poser à l'utilisateur lors de l'exécution.
-    *   **Lien critique** : Associez chaque question à une **Variable** (ex: la réponse à "Quel est le nom du client ?" remplit la variable `client_name`).
-4.  **Règles de Documents / Emails** :
-    *   Définissez quel template générer et quand.
-    *   **Condition** : Utilisez des expressions simples (ex: `opt_assurance == true` ou `ALWAYS`).
-    *   **Template** : Sélectionnez un template existant de la bibliothèque.
-    *   **Nom de sortie** : Paramétrez le nom du fichier généré (supporte les variables, ex: `{{client_name}}_Contrat.pdf`).
+4. REVIEW
+   Claude reçoit le code produit
+   Valide ou demande une correction ciblée
 
-## 3. Exécution (Prise en Charge Client) (`/workflow`)
+5. VALIDATION
+   Test fonctionnel par l'utilisateur
+   Si OK → on passe à la feature suivante
+   Si KO → correction ciblée, pas de réécriture complète
+```
 
-*(Module d'exécution pour les opérateurs)*
+---
 
-1.  **Sélection** : L'utilisateur choisit un type de projet configuré.
-2.  **Saisie** : L'utilisateur répond aux questions définies dans la configuration (Questions prérequis).
-3.  **Options** : L'utilisateur sélectionne les options actives.
-4.  **Génération** : Le moteur évalue les règles :
-    *   Il remplace les variables dans les templates par les réponses saisies.
-    *   Il respecte les conditions (génère ou non le document).
-    *   Il produit les fichiers finaux.
+## Règles de gestion du code
 
-## État des Liens
+- **Une seule branche** : `main` — pas de branche de feature, pas de branche de dev
+- **Commits atomiques** : un commit = une feature ou une correction
+- **Pas de réécriture** de ce qui fonctionne — on touche uniquement ce qui est demandé
+- **Toujours lire avant d'écrire** : Claude Code lit les fichiers existants avant de modifier
+- **Pas d'hallucination** : si un fichier ou une fonction est inconnu, Claude Code le lit d'abord
+- **Contraintes explicites** dans chaque prompt : fichiers autorisés à modifier, fichiers interdits
+- **Review obligatoire** : aucun code n'est intégré sans validation de Claude
 
-*   [x] Tableau de bord (`/`) -> Vue d'ensemble (Mock)
-*   [x] Bibliothèque de Templates (`/templates`) -> Liste et Éditeur
-*   [x] Configuration (`/configuration`) -> Liste des projets et Éditeur complet
-*   [x] Dictionnaire de Variables (`/variables`) -> Gestion CRUD des variables
-*   [x] Prise en charge (`/workflow`) -> Simulation du parcours (Données mockées pour l'instant)
-*   [ ] Paramètres (`/settings`) -> (placeholder en attente de lien)
-*   [ ] Historique (`/history`) -> (Visualisation statique)
+---
+
+## Déploiement
+
+- **Hébergement** : GitHub Pages (phase de test)
+- **CI/CD** : GitHub Actions déclenché sur push `main`
+- **Build** : `npm run build` → `dist/` → déployé automatiquement
+- **Variables sensibles** : dans GitHub Secrets, jamais dans le code
+
+### Commande de déploiement
+
+```bash
+git add .
+git commit -m "feat: description de la feature"
+git push origin main
+```
+
+---
+
+## Workflow de l'application
+
+### 1. Dictionnaire de variables (`/variables`)
+Définir toutes les balises dynamiques utilisées dans l'application.
+- Variables système (non supprimables) : `nom_client`, `numero_client`, `type_projet`, `contact_1_*` à `contact_3_*`
+- Variables personnalisées : ajout/modification/suppression avec détection de doublons
+- Utilisées dans les templates avec la syntaxe `{{clé}}`
+
+### 2. Bibliothèque de templates (`/templates`)
+Créer les modèles de documents et d'emails.
+- Types : DOCX, XLSX, PDF, EMAIL
+- Éditeur avec panneau balises (bouton "Balises" → insertion au curseur)
+- Import de fichier base64 pour DOCX/XLSX/PDF existants
+
+### 3. Paramétrage projet (`/configuration`)
+Wizard 7 étapes en page dédiée :
+1. **Identité** : nom, code, description, tags, statut
+2. **Options** : options cochables lors de la prise en charge (ex: assurance, support 24/7)
+3. **Questions prérequis** : questions posées lors du wizard, avec condition d'affichage par option
+4. **Règles documents** : quel template générer, chemin destination, condition d'activation
+5. **Règles emails** : quel template EMAIL, condition d'activation
+6. **Planning** : J-X avant déploiement, J+X après, "Générer lors de la prise en charge", "Rappel utilisateur"
+7. **Simulation** : aperçu planning chronologique + règles activées selon options cochées
+
+### 4. Prise en charge client (`/workflow`)
+Wizard 6 étapes pour l'opérateur :
+1. **Informations client** : nom, numéro, interlocuteurs (jusqu'à 3 contacts)
+2. **Type de projet** : sélection + options + date de déploiement
+3. **Questions prérequis** : réponses aux questions configurées
+4. **Récapitulatif** : liste des documents à générer
+5. **Planning** : aperçu chronologique (emails + documents + questions planifiés)
+6. **Confirmation** : téléchargement des fichiers générés
+
+Le panneau "Balises" (bouton en haut à droite) affiche toutes les balises disponibles avec leurs valeurs résolues en temps réel.
+
+### 5. Planning (`/planning`)
+Vue consolidée de tous les éléments planifiés :
+- Emails, documents et questions planifiés
+- Filtres : période (7j / 30j / 90j), client
+- Toggle "Voir les envoyés"
+- Marquage individuel ou en masse
+
+### 6. Historique (`/history`)
+- Liste de toutes les générations avec statut
+- Re-téléchargement des fichiers générés
+- Mode suppression : Shift+Alt+H
+
+---
+
+## À venir — Phase 1 (PocketBase)
+
+- Remplacement du localStorage par PocketBase (auto-hébergé)
+- Migration clients et contacts
+- Auth PocketBase en remplacement du login hardcodé
+- VPS Hetzner pour la mise en production

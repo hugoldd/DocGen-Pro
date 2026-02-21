@@ -93,7 +93,12 @@ export function buildGenerationPlan(
     const template = templateMap.get(rule.templateId);
     if (!template) return null;
     const baseName = resolveOutputFileName(rule.outputPattern, clientValues);
-    const name = `${baseName}${extensionByType[template.type]}`;
+    const finalBaseName = baseName.trim()
+      ? baseName
+      : `${clientValues.nom_client || 'Document'} - ${template.name}`
+        .replace(/[^a-zA-Z0-9\s\-_éèêëàâùûüîïôçÉÈÊËÀÂÙÛÜÎÏÔÇ]/g, '')
+        .trim();
+    const name = `${finalBaseName}${extensionByType[template.type]}`;
     const destinationPath = resolveVariables(rule.destinationPath, clientValues);
     return { name, type: template.type, templateId: template.id, destinationPath };
   };
@@ -134,9 +139,13 @@ export function buildScheduledEmails(
     if (!emailRule) return acc;
 
     const template = templates.find((t) => t.id === emailRule.templateId);
-    const baseDate = new Date(deploymentDate);
+    const baseDate = rule.generateOnWorkflow
+      ? new Date()
+      : new Date(deploymentDate);
     const calculatedDate = new Date(baseDate);
-    calculatedDate.setDate(baseDate.getDate() + rule.daysBeforeDeployment);
+    if (!rule.generateOnWorkflow) {
+      calculatedDate.setDate(baseDate.getDate() + rule.daysBeforeDeployment);
+    }
     const recipient = resolveVariables(emailRule.recipient || '', clientValues);
 
     acc.push({
@@ -147,6 +156,7 @@ export function buildScheduledEmails(
       templateId: emailRule.templateId,
       templateName: template?.name || 'Template inconnu',
       recipient,
+      generateOnWorkflow: rule.generateOnWorkflow ?? false,
     });
 
     return acc;
@@ -171,9 +181,13 @@ export function buildScheduledDocuments(
     if (!documentRule) return acc;
     if (!templateIds.has(documentRule.templateId)) return acc;
 
-    const baseDate = new Date(deploymentDate);
+    const baseDate = rule.generateOnWorkflow
+      ? new Date()
+      : new Date(deploymentDate);
     const calculatedDate = new Date(baseDate);
-    calculatedDate.setDate(baseDate.getDate() + rule.daysBeforeDeployment);
+    if (!rule.generateOnWorkflow) {
+      calculatedDate.setDate(baseDate.getDate() + rule.daysBeforeDeployment);
+    }
 
     acc.push({
       id: rule.id,
@@ -183,6 +197,7 @@ export function buildScheduledDocuments(
       documentRuleId: documentRule.id,
       outputPattern: documentRule.outputPattern,
       requiresAction: rule.requiresAction,
+      generateOnWorkflow: rule.generateOnWorkflow ?? false,
     });
 
     return acc;
@@ -203,9 +218,13 @@ export function buildScheduledQuestions(
     const question = projectType.questions.find((q) => q.id === rule.questionId);
     if (!question) return acc;
 
-    const baseDate = new Date(deploymentDate);
+    const baseDate = rule.generateOnWorkflow
+      ? new Date()
+      : new Date(deploymentDate);
     const calculatedDate = new Date(baseDate);
-    calculatedDate.setDate(baseDate.getDate() + rule.daysBeforeDeployment);
+    if (!rule.generateOnWorkflow) {
+      calculatedDate.setDate(baseDate.getDate() + rule.daysBeforeDeployment);
+    }
 
     acc.push({
       id: rule.id,
@@ -215,6 +234,7 @@ export function buildScheduledQuestions(
       questionId: question.id,
       questionLabel: question.label,
       requiresAction: rule.requiresAction,
+      generateOnWorkflow: rule.generateOnWorkflow ?? false,
     });
 
     return acc;

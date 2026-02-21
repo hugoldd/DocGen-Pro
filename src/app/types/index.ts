@@ -49,6 +49,8 @@ export interface EmailScheduleRule {
   daysBeforeDeployment: number;
   label: string;
   description: string;
+  generateOnWorkflow?: boolean;
+  requiresAction?: boolean;
 }
 
 export interface DocumentScheduleRule {
@@ -58,6 +60,7 @@ export interface DocumentScheduleRule {
   label: string;
   description: string;
   requiresAction: boolean;
+  generateOnWorkflow?: boolean;
 }
 
 export interface QuestionScheduleRule {
@@ -67,6 +70,7 @@ export interface QuestionScheduleRule {
   label: string;
   description: string;
   requiresAction: boolean;
+  generateOnWorkflow?: boolean;
 }
 
 export interface ProjectType {

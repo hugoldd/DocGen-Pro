@@ -1,4 +1,5 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
+import type React from 'react';
 import { useNavigate } from 'react-router';
 import {
   Plus,
@@ -62,6 +63,8 @@ import {
 import { Separator } from '../../components/ui/separator';
 import { Button } from '../../components/ui/button';
 import { exportSingleProjectType } from '../../utils/settingsExport';
+import VariablePickerButton from '../../components/VariablePickerButton';
+import { useInsertAtCursor } from '../../hooks/useInsertAtCursor';
 
 const genId = () => Math.random().toString(36).slice(2, 10);
 
@@ -108,6 +111,38 @@ const getDefaults = (): ProjectForm => ({
 
 const inputCls =
   'w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all';
+
+const RuleTextField = ({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+}) => {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const insertAtCursor = useInsertAtCursor(
+    inputRef as unknown as React.RefObject<HTMLTextAreaElement>,
+    value,
+    onChange,
+    ''
+  );
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={inputCls}
+      />
+      <VariablePickerButton insertAtCursor={insertAtCursor} className="shrink-0" />
+    </div>
+  );
+};
 
 const ProjectConfig = () => {
   const navigate = useNavigate();
@@ -355,15 +390,7 @@ const ProjectConfig = () => {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate('/configuration')}
-            className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors inline-flex items-center gap-2"
-          >
-            <Settings className="h-4 w-4" />
-            Configuration
-          </button>
-          <button
-            type="button"
-            onClick={handleCreate}
+            onClick={() => navigate('/configuration/nouveau')}
             className="px-4 py-2 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors inline-flex items-center gap-2"
           >
             <Plus className="h-4 w-4" />
@@ -438,7 +465,7 @@ const ProjectConfig = () => {
                 )}
                 <button
                   type="button"
-                  onClick={() => handleEdit(project.id)}
+                  onClick={() => navigate(`/configuration/${project.id}/modifier`)}
                   className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors inline-flex items-center gap-2"
                 >
                   <Pencil className="h-3 w-3" />
@@ -779,22 +806,18 @@ const ProjectConfig = () => {
                               <div className="grid grid-cols-2 gap-6">
                                 <div className="space-y-1">
                                   <label className="text-xs text-slate-500">Nom de sortie</label>
-                                  <input
-                                    type="text"
+                                  <RuleTextField
                                     value={rule.outputPattern}
-                                    onChange={(e) => updateDocumentRule(rule.id, { outputPattern: e.target.value })}
+                                    onChange={(val) => updateDocumentRule(rule.id, { outputPattern: val })}
                                     placeholder="{{nom_client}}_contrat"
-                                    className={inputCls}
                                   />
                                 </div>
                                 <div className="space-y-1">
                                   <label className="text-xs text-slate-500">Dossier destination</label>
-                                  <input
-                                    type="text"
+                                  <RuleTextField
                                     value={rule.destinationPath}
-                                    onChange={(e) => updateDocumentRule(rule.id, { destinationPath: e.target.value })}
+                                    onChange={(val) => updateDocumentRule(rule.id, { destinationPath: val })}
                                     placeholder="/Projets/2026"
-                                    className={inputCls}
                                   />
                                 </div>
                               </div>
@@ -876,33 +899,27 @@ const ProjectConfig = () => {
                               </div>
                               <div className="space-y-1">
                                 <label className="text-xs text-slate-500">Destinataire</label>
-                                <input
-                                  type="text"
+                                <RuleTextField
                                   value={rule.recipient}
-                                  onChange={(e) => updateEmailRule(rule.id, { recipient: e.target.value })}
+                                  onChange={(val) => updateEmailRule(rule.id, { recipient: val })}
                                   placeholder="{{contact_email}}"
-                                  className={inputCls}
                                 />
                               </div>
                               <div className="grid grid-cols-2 gap-6">
                                 <div className="space-y-1">
                                   <label className="text-xs text-slate-500">Nom de sortie</label>
-                                  <input
-                                    type="text"
+                                  <RuleTextField
                                     value={rule.outputPattern}
-                                    onChange={(e) => updateEmailRule(rule.id, { outputPattern: e.target.value })}
+                                    onChange={(val) => updateEmailRule(rule.id, { outputPattern: val })}
                                     placeholder="Email_{{nom_client}}"
-                                    className={inputCls}
                                   />
                                 </div>
                                 <div className="space-y-1">
                                   <label className="text-xs text-slate-500">Dossier destination</label>
-                                  <input
-                                    type="text"
+                                  <RuleTextField
                                     value={rule.destinationPath}
-                                    onChange={(e) => updateEmailRule(rule.id, { destinationPath: e.target.value })}
+                                    onChange={(val) => updateEmailRule(rule.id, { destinationPath: val })}
                                     placeholder="/Emails/2026"
-                                    className={inputCls}
                                   />
                                 </div>
                               </div>
