@@ -1,7 +1,8 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Braces,
   Check,
+  ChevronLeft,
   ChevronRight,
   User,
   Briefcase,
@@ -17,11 +18,27 @@ import {
   Trash2,
   Calendar,
   Search,
+  Layers,
+  Package,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../../lib/utils';
 import { useApp } from '../../context/AppContext';
+import { useConsultants, type Consultant } from '../../hooks/useConsultants';
+import { useDisponibilites, type Disponibilite } from '../../hooks/useDisponibilites';
+import { usePrestationsProjet, type PrestationProjet } from '../../hooks/usePrestationsProjet';
+import { usePacks, type Pack } from '../../hooks/usePacks';
+import { useProjets } from '../../hooks/useProjets';
+import { useReservations } from '../../hooks/useReservations';
 import type { GeneratedFile, GenerationRecord, ProjectType } from '../../types';
+import { Badge } from '../../components/ui/badge';
+import { Button } from '../../components/ui/button';
+import { Checkbox } from '../../components/ui/checkbox';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import {
   buildGenerationPlan,
   buildScheduledEmails,
@@ -46,6 +63,7 @@ interface WizardState {
   contacts: Contact[];
   selectedProjectTypeId: string;
   selectedOptionIds: string[];
+  selectedPackIds: string[];
   context: string;
   answers: Record<string, string>;
   deploymentDate: string;
@@ -56,9 +74,12 @@ interface WizardState {
 const STEPS = [
   { id: 1, label: 'Informations client', icon: User },
   { id: 2, label: 'Type de projet', icon: Briefcase },
-  { id: 3, label: 'Questions prérequis', icon: HelpCircle },
-  { id: 4, label: 'Récapitulatif', icon: FileText },
-  { id: 5, label: 'Terminé', icon: CheckCircle },
+  { id: 3, label: 'Options', icon: Layers },
+  { id: 4, label: 'Questions prérequis', icon: HelpCircle },
+  { id: 5, label: 'Packs', icon: Package },
+  { id: 6, label: 'Réservations', icon: Calendar },
+  { id: 7, label: 'Génération documents', icon: FileText },
+  { id: 8, label: 'Terminé', icon: CheckCircle },
 ];
 
 const createContact = (): Contact => ({
@@ -75,6 +96,7 @@ const getInitialState = (): WizardState => ({
   contacts: [createContact()],
   selectedProjectTypeId: '',
   selectedOptionIds: [],
+  selectedPackIds: [],
   context: '',
   answers: {},
   deploymentDate: '',
@@ -82,10 +104,73 @@ const getInitialState = (): WizardState => ({
   generatedFiles: [],
 });
 
+type ReservationSlot = {
+  morning: boolean;
+  afternoon: boolean;
+};
+
+type ReservationDraft = {
+  id: string;
+  prestationId: string;
+  consultantId: string;
+  slots: Record<string, ReservationSlot>;
+  date_debut: string;
+  nb_jours: number;
+  mode: 'sur_site' | 'distanciel';
+  avec_trajet: boolean;
+  commentaire: string;
+};
+
+type PrestationDraft = {
+  id: string;
+  label: string;
+  jours_prevus: number;
+  jours_supplementaires: number;
+  annule: boolean;
+  forfait: boolean;
+  mode_defaut: 'sur_site' | 'distanciel';
+  source: 'pack' | 'extra';
+  competenceIds?: string[];
+};
+
+const formatDateFr = (value: string | Date) => {
+  const date = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
+
+const toDateKey = (date: Date) => date.toISOString().slice(0, 10);
+const startOfDay = (date: Date) => {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const parseDateKey = (key: string) => new Date(`${key}T00:00:00`);
+
+const dayNames = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+const dayLabels = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+const weekdayIndex = (date: Date) => {
+  const day = date.getDay();
+  return day === 0 ? 6 : day - 1;
+};
 export default function WorkflowEngine() {
-  const { projectTypes, templates, addRecord, variables } = useApp();
+  const { projectTypes, templates, variables } = useApp();
   const location = useLocation();
+  const projets = useProjets();
+  const prestationsProjet = usePrestationsProjet();
+  const reservationsState = useReservations();
+  const consultantsState = useConsultants();
+  const disponibilitesState = useDisponibilites();
+  const packsState = usePacks();
+  const prestationsProjetRef = useRef<PrestationProjet[]>([]);
   const [step, setStep] = useState(1);
+  const [prestations, setPrestations] = useState<PrestationDraft[]>([]);
+  const [reservations, setReservations] = useState<ReservationDraft[]>([]);
   const [state, setState] = useState<WizardState>(getInitialState());
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState('');
@@ -97,6 +182,10 @@ export default function WorkflowEngine() {
     () => projectTypes.filter((pt) => pt.status === 'published'),
     [projectTypes]
   );
+
+  useEffect(() => {
+    prestationsProjetRef.current = prestationsProjet.items;
+  }, [prestationsProjet.items]);
 
   useEffect(() => {
     const prefill = (location.state as {
@@ -142,15 +231,17 @@ export default function WorkflowEngine() {
       selectedProjectType?.questionSchedule?.length
     )
   );
-  const totalSteps = hasPlanning ? 6 : 5;
-  const effectiveStep = !hasPlanning && step === 6 ? 5 : step;
+  const totalSteps = hasPlanning ? 8 : 7;
+  const successStep = totalSteps + 1;
+  const effectiveStep = step;
 
   const displaySteps = useMemo(() => {
     if (!hasPlanning) return STEPS;
     return [
-      ...STEPS.slice(0, 4),
-      { id: 5, label: 'Planning', icon: Calendar },
-      { id: 6, label: 'Terminé', icon: CheckCircle },
+      ...STEPS.slice(0, 6),
+      { id: 7, label: 'Planning', icon: Calendar },
+      { id: 8, label: 'Génération documents', icon: FileText },
+      { id: 9, label: 'Terminé', icon: CheckCircle },
     ];
   }, [hasPlanning]);
 
@@ -229,7 +320,7 @@ export default function WorkflowEngine() {
   );
 
   useEffect(() => {
-    if (step !== 4 || !selectedProjectType) return;
+    if (step !== totalSteps || !selectedProjectType) return;
 
     const plan = buildGenerationPlan(
       selectedProjectType,
@@ -335,21 +426,47 @@ export default function WorkflowEngine() {
       .filter((section) => section.items.length > 0);
   }, [variableSections, variablesSearch]);
 
-  const goNext = () => {
-    setStep((prev) => {
-      if (prev === 4 && !hasPlanning) return 6;
-      return Math.min(prev + 1, 6);
-    });
+    const goNext = () => {
+    setStep((prev) => Math.min(prev + 1, totalSteps));
+  };
+
+  const handleGoNext = () => {
+    if (step === 5) {
+      const newPrestations: PrestationDraft[] = [];
+      for (const packId of state.selectedPackIds) {
+        const pack = packsState.items.find((p) => p.id === packId);
+        if (!pack) continue;
+        for (const ligne of pack.lignes) {
+          const l = ligne as Record<string, unknown>;
+          newPrestations.push({
+            id: Math.random().toString(36).slice(2, 10),
+            label: String(l.label || ''),
+            jours_prevus: Number(l.jours_prevus || 0),
+            jours_supplementaires: Number(l.jours_supplementaires || 0),
+            annule: false,
+            forfait: Boolean(l.forfait),
+            mode_defaut: (['sur_site', 'distanciel'].includes(String(l.mode_defaut))
+              ? String(l.mode_defaut)
+              : 'sur_site') as 'sur_site' | 'distanciel',
+            source: 'pack',
+            competenceIds: Array.isArray(l.competenceIds)
+              ? (l.competenceIds as unknown[]).map(String)
+              : [],
+          });
+        }
+      }
+      setPrestations(newPrestations);
+    }
+    goNext();
   };
   const goPrev = () => {
-    setStep((prev) => {
-      if (prev === 6 && !hasPlanning) return 4;
-      return Math.max(prev - 1, 1);
-    });
+    setStep((prev) => Math.max(prev - 1, 1));
   };
 
   const resetWizard = () => {
     setState(getInitialState());
+    setPrestations([]);
+    setReservations([]);
     setStep(1);
     setIsGenerating(false);
     setGenerationError('');
@@ -389,10 +506,10 @@ export default function WorkflowEngine() {
     selectedProjectType?.documentSchedule?.length ||
     selectedProjectType?.questionSchedule?.length
   );
-  const canProceedStep2 =
-    !!state.selectedProjectTypeId && (!requiresDeploymentDate || !!state.deploymentDate);
+  const canProceedStep2 = !!state.selectedProjectTypeId;
+  const canProceedStep3 = !requiresDeploymentDate || !!state.deploymentDate;
 
-  const canProceedStep3 = useMemo(() => {
+  const canProceedStep4 = useMemo(() => {
     if (!activeQuestions.length) return true;
     return activeQuestions.every((q) => {
       if (!q.required) return true;
@@ -401,7 +518,7 @@ export default function WorkflowEngine() {
     });
   }, [activeQuestions, state.answers]);
 
-  const handleGenerate = async () => {
+    const handleGenerate = async () => {
     if (!selectedProjectType || state.generationPlan.length === 0) return;
     setIsGenerating(true);
     setGenerationError('');
@@ -409,7 +526,8 @@ export default function WorkflowEngine() {
     try {
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
-      addRecord({
+      const codeProjet = await projets.generateCodeProjet(state.clientNumber);
+      const projectId = await projets.upsert(state.clientNumber, codeProjet, {
         clientName: state.clientName,
         clientNumber: state.clientNumber,
         projectTypeId: selectedProjectType.id,
@@ -429,11 +547,62 @@ export default function WorkflowEngine() {
         status: 'success',
       });
 
+      if (!projectId) {
+        throw new Error('Création du projet impossible.');
+      }
+
+      const prestationsToCreate = prestations.filter((item) => !item.annule);
+      for (const item of prestationsToCreate) {
+        await prestationsProjet.add({
+          code_projet: codeProjet,
+          prestation_id: item.id,
+          label: item.label,
+          jours_prevus: item.jours_prevus,
+          jours_supplementaires: item.jours_supplementaires,
+          annule: item.annule,
+          forfait: item.forfait,
+          mode_defaut: item.mode_defaut,
+        });
+      }
+
+      await prestationsProjet.refresh();
+      const createdPrestations = prestationsProjetRef.current.filter(
+        (item) => item.code_projet === codeProjet
+      );
+      const prestationBuckets = new Map<string, PrestationProjet[]>();
+      createdPrestations.forEach((item) => {
+        const key = `${item.label}|${item.jours_prevus}|${item.jours_supplementaires}|${item.forfait}|${item.mode_defaut}`;
+        const list = prestationBuckets.get(key) || [];
+        list.push(item);
+        prestationBuckets.set(key, list);
+      });
+
+      for (const reservation of reservations) {
+        const prestation = prestations.find((item) => item.id === reservation.prestationId);
+        if (!prestation) continue;
+        const bucketKey = `${prestation.label}|${prestation.jours_prevus}|${prestation.jours_supplementaires}|${prestation.forfait}|${prestation.mode_defaut}`;
+        const bucket = prestationBuckets.get(bucketKey) || [];
+        const linkedPrestation = bucket.shift();
+        if (!linkedPrestation) continue;
+
+        await reservationsState.add({
+          code_projet: codeProjet,
+          prestation_projet_id: linkedPrestation.id,
+          consultant_id: reservation.consultantId,
+          date_debut: reservation.date_debut,
+          nb_jours: reservation.nb_jours,
+          mode: reservation.mode,
+          avec_trajet_aller: reservation.avec_trajet,
+          avec_trajet_retour: reservation.avec_trajet,
+          commentaire: reservation.commentaire,
+        });
+      }
+
       setState((prev) => ({
         ...prev,
         generatedFiles: prev.generationPlan,
       }));
-      setStep(hasPlanning ? 5 : 6);
+      setStep(successStep);
     } catch (error) {
       setGenerationError('Une erreur est survenue pendant la génération.');
     } finally {
@@ -528,13 +697,38 @@ export default function WorkflowEngine() {
                 />
               )}
               {step === 3 && (
+                <StepOptions
+                  state={state}
+                  updateState={setState}
+                  projectType={selectedProjectType}
+                />
+              )}
+              {step === 4 && (
                 <StepQuestions
                   state={state}
                   updateState={setState}
                   questions={activeQuestions}
                 />
               )}
-              {step === 4 && (
+              {step === 5 && (
+                <StepPacks
+                  state={state}
+                  updateState={setState}
+                  projectType={selectedProjectType}
+                  allPacks={packsState.items}
+                />
+              )}
+              {step === 6 && (
+                <StepReservations
+                  prestations={prestations}
+                  reservations={reservations}
+                  setPrestations={setPrestations}
+                  setReservations={setReservations}
+                  consultants={consultantsState.items}
+                  disponibilites={disponibilitesState.items}
+                />
+              )}
+              {step === 7 && !hasPlanning && (
                 <StepSummary
                   state={state}
                   updateState={setState}
@@ -542,7 +736,7 @@ export default function WorkflowEngine() {
                   questions={activeQuestions}
                 />
               )}
-              {step === 5 && hasPlanning && (
+              {step === 7 && hasPlanning && (
                 <StepPlanning
                   scheduledEmails={scheduledEmails}
                   scheduledDocuments={scheduledDocuments}
@@ -550,7 +744,15 @@ export default function WorkflowEngine() {
                   deploymentDate={state.deploymentDate}
                 />
               )}
-              {step === 6 && (
+              {step === 8 && hasPlanning && (
+                <StepSummary
+                  state={state}
+                  updateState={setState}
+                  projectType={selectedProjectType}
+                  questions={activeQuestions}
+                />
+              )}
+              {step === successStep && (
                 <StepSuccess
                   state={state}
                   projectType={selectedProjectType}
@@ -583,7 +785,7 @@ export default function WorkflowEngine() {
           </AnimatePresence>
         </div>
 
-        {step < 6 && (
+        {step <= totalSteps && (
           <div className="p-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
             <button
               onClick={goPrev}
@@ -598,7 +800,7 @@ export default function WorkflowEngine() {
               <ArrowLeft className="w-4 h-4" /> Précédent
             </button>
 
-            {step === 4 ? (
+            {step === totalSteps ? (
               <button
                 onClick={handleGenerate}
                 disabled={isGenerating || state.generationPlan.length === 0}
@@ -618,11 +820,11 @@ export default function WorkflowEngine() {
               </button>
             ) : (
               <button
-                onClick={goNext}
-                disabled={(step === 1 && !canProceedStep1) || (step === 2 && !canProceedStep2) || (step === 3 && !canProceedStep3)}
+                onClick={handleGoNext}
+                disabled={(step === 1 && !canProceedStep1) || (step === 2 && !canProceedStep2) || (step === 3 && !canProceedStep3) || (step === 4 && !canProceedStep4)}
                 className={cn(
                   'px-8 py-2.5 bg-slate-900 text-white rounded-lg shadow-md hover:bg-slate-800 transition-all text-sm font-medium flex items-center gap-2',
-                  ((step === 1 && !canProceedStep1) || (step === 2 && !canProceedStep2) || (step === 3 && !canProceedStep3)) &&
+                  ((step === 1 && !canProceedStep1) || (step === 2 && !canProceedStep2) || (step === 3 && !canProceedStep3) || (step === 4 && !canProceedStep4)) &&
                     'opacity-50 cursor-not-allowed'
                 )}
               >
@@ -632,7 +834,7 @@ export default function WorkflowEngine() {
           </div>
         )}
 
-      {step === 4 && generationError && (
+      {step === totalSteps && generationError && (
         <div className="px-6 pb-6 text-sm text-red-600">{generationError}</div>
       )}
       </div>
@@ -880,35 +1082,53 @@ function StepProjectSelection({
         </div>
       )}
 
-      {state.selectedProjectTypeId && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mt-8 pt-8 border-t border-slate-100"
-        >
-          <h3 className="font-semibold text-slate-900 mb-4">Options du projet</h3>
+    </div>
+  );
+}
 
-          {projectTypes
-            .find((pt) => pt.id === state.selectedProjectTypeId)
-            ?.options.length ? (
+function StepOptions({
+  state,
+  updateState,
+  projectType,
+}: {
+  state: WizardState;
+  updateState: React.Dispatch<React.SetStateAction<WizardState>>;
+  projectType: ProjectType | undefined;
+}) {
+  const hasSchedule = !!(
+    projectType?.emailSchedule?.length ||
+    projectType?.documentSchedule?.length ||
+    projectType?.questionSchedule?.length
+  );
+
+  return (
+    <div className="space-y-8 max-w-3xl mx-auto">
+      <div className="text-center mb-8">
+        <h2 className="text-2xl font-bold text-slate-900">Options du projet</h2>
+        <p className="text-slate-500 mt-2">Configurez les options spécifiques à ce type de projet.</p>
+      </div>
+
+      {!projectType ? (
+        <p className="text-center text-slate-500 italic">Sélectionnez un type de projet à l'étape précédente.</p>
+      ) : (
+        <>
+          {projectType.options?.length ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {projectTypes
-                .find((pt) => pt.id === state.selectedProjectTypeId)
-                ?.options.map((opt) => (
-                  <label key={opt.id} className="flex items-center p-4 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
-                    <input
-                      type="checkbox"
-                      className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300"
-                      checked={state.selectedOptionIds.includes(opt.id)}
-                      onChange={(e) =>
-                        updateState((prev) => ({
-                          ...prev,
-                          selectedOptionIds: e.target.checked
-                            ? [...prev.selectedOptionIds, opt.id]
-                            : prev.selectedOptionIds.filter((id) => id !== opt.id),
-                        }))
-                      }
-                    />
+              {projectType.options.map((opt) => (
+                <label key={opt.id} className="flex items-center p-4 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
+                  <input
+                    type="checkbox"
+                    className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300"
+                    checked={state.selectedOptionIds.includes(opt.id)}
+                    onChange={(e) =>
+                      updateState((prev) => ({
+                        ...prev,
+                        selectedOptionIds: e.target.checked
+                          ? [...prev.selectedOptionIds, opt.id]
+                          : prev.selectedOptionIds.filter((id) => id !== opt.id),
+                      }))
+                    }
+                  />
                   <div className="ml-3">
                     <span className="font-medium text-slate-700 block">{opt.label}</span>
                   </div>
@@ -916,7 +1136,7 @@ function StepProjectSelection({
               ))}
             </div>
           ) : (
-            <p className="text-slate-500 italic text-sm">Aucune option disponible pour ce projet.</p>
+            <p className="text-slate-500 italic text-sm">Aucune option disponible pour ce type de projet.</p>
           )}
 
           <div className="mt-6">
@@ -926,7 +1146,7 @@ function StepProjectSelection({
               placeholder="Ajoutez ici des détails spécifiques..."
               value={state.context}
               onChange={(e) => updateState((prev) => ({ ...prev, context: e.target.value }))}
-            ></textarea>
+            />
           </div>
 
           {hasSchedule && (
@@ -937,17 +1157,101 @@ function StepProjectSelection({
               <input
                 type="date"
                 value={state.deploymentDate}
-                onChange={(e) =>
-                  updateState((prev) => ({ ...prev, deploymentDate: e.target.value }))
-                }
+                onChange={(e) => updateState((prev) => ({ ...prev, deploymentDate: e.target.value }))}
                 className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
               />
-              <p className="text-xs text-slate-500 mt-1">
-                Requise pour générer le planning d'envoi des emails.
-              </p>
+              <p className="text-xs text-slate-500 mt-1">Requise pour générer le planning d'envoi des emails.</p>
             </div>
           )}
-        </motion.div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function StepPacks({
+  state,
+  updateState,
+  projectType,
+  allPacks,
+}: {
+  state: WizardState;
+  updateState: React.Dispatch<React.SetStateAction<WizardState>>;
+  projectType: ProjectType | undefined;
+  allPacks: Pack[];
+}) {
+  const defaultPackIds: string[] = (projectType as unknown as { pack_ids?: string[] })?.pack_ids ?? [];
+
+  // Pre-check default packs on first render
+  React.useEffect(() => {
+    if (defaultPackIds.length > 0 && state.selectedPackIds.length === 0) {
+      updateState((prev) => ({ ...prev, selectedPackIds: defaultPackIds }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectType?.id]);
+
+  const togglePack = (packId: string, checked: boolean) => {
+    updateState((prev) => ({
+      ...prev,
+      selectedPackIds: checked
+        ? [...prev.selectedPackIds, packId]
+        : prev.selectedPackIds.filter((id) => id !== packId),
+    }));
+  };
+
+  const selectedPacks = allPacks.filter((p) => state.selectedPackIds.includes(p.id));
+  const totalLignes = selectedPacks.reduce((sum, p) => sum + p.lignes.length, 0);
+
+  return (
+    <div className="space-y-8 max-w-3xl mx-auto">
+      <div className="text-center mb-8">
+        <h2 className="text-2xl font-bold text-slate-900">Packs de prestations</h2>
+        <p className="text-slate-500 mt-2">Sélectionnez les packs à inclure dans ce projet.</p>
+      </div>
+
+      {allPacks.length === 0 ? (
+        <p className="text-center text-slate-500 italic">Aucun pack disponible.</p>
+      ) : (
+        <div className="space-y-3">
+          {allPacks.map((pack) => {
+            const isDefault = defaultPackIds.includes(pack.id);
+            const isChecked = state.selectedPackIds.includes(pack.id);
+            return (
+              <label
+                key={pack.id}
+                className={cn(
+                  'flex items-start gap-4 p-4 border rounded-xl cursor-pointer transition-all',
+                  isChecked ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 bg-white hover:bg-slate-50'
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-1 w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300"
+                  checked={isChecked}
+                  onChange={(e) => togglePack(pack.id, e.target.checked)}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-slate-900">{pack.label}</span>
+                    {isDefault && (
+                      <span className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded border border-indigo-200">Par défaut</span>
+                    )}
+                  </div>
+                  {pack.description && (
+                    <p className="text-sm text-slate-500 mt-0.5">{pack.description}</p>
+                  )}
+                  <p className="text-xs text-slate-400 mt-1">{pack.lignes.length} ligne(s) de prestation</p>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      {totalLignes > 0 && (
+        <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
+          {totalLignes} prestation(s) seront créées pour ce projet.
+        </div>
       )}
     </div>
   );
@@ -1074,6 +1378,622 @@ function StepQuestions({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function StepReservations({
+  prestations,
+  reservations,
+  setPrestations,
+  setReservations,
+  consultants,
+  disponibilites,
+}: {
+  prestations: PrestationDraft[];
+  reservations: ReservationDraft[];
+  setPrestations: React.Dispatch<React.SetStateAction<PrestationDraft[]>>;
+  setReservations: React.Dispatch<React.SetStateAction<ReservationDraft[]>>;
+  consultants: Consultant[];
+  disponibilites: Disponibilite[];
+}) {
+  const [reservationModalOpen, setReservationModalOpen] = useState(false);
+  const [prestationModalOpen, setPrestationModalOpen] = useState(false);
+  const [activePrestationId, setActivePrestationId] = useState<string | null>(null);
+  const [editingReservationId, setEditingReservationId] = useState<string | null>(null);
+  const [selectedConsultantId, setSelectedConsultantId] = useState('');
+  const [selectedSlots, setSelectedSlots] = useState<Record<string, ReservationSlot>>({});
+  const [mode, setMode] = useState<'sur_site' | 'distanciel'>('sur_site');
+  const [avecTrajet, setAvecTrajet] = useState(false);
+  const [commentaire, setCommentaire] = useState('');
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
+  const [newPrestationLabel, setNewPrestationLabel] = useState('');
+  const [newPrestationDays, setNewPrestationDays] = useState('1');
+  const [newPrestationMode, setNewPrestationMode] = useState<'sur_site' | 'distanciel'>('sur_site');
+
+  const packPrestations = prestations.filter((item) => item.source === 'pack');
+  const extraPrestations = prestations.filter((item) => item.source === 'extra');
+
+  const activePrestation = prestations.find((item) => item.id === activePrestationId) || null;
+
+  const activeConsultant = consultants.find((item) => item.id === selectedConsultantId) || null;
+  const workingDays = useMemo(() => {
+    if (!activeConsultant || !Array.isArray(activeConsultant.jours_travailles)) {
+      return ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
+    }
+    if (activeConsultant.jours_travailles.length === 0) {
+      return ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
+    }
+    return activeConsultant.jours_travailles
+      .map((day) => String(day).toLowerCase())
+      .filter((day) => dayNames.includes(day));
+  }, [activeConsultant]);
+
+  const isDayBlocked = (date: Date) => {
+    const issues: string[] = [];
+    const index = weekdayIndex(date);
+    if (index >= 5) issues.push('Week-end');
+    const dayName = dayNames[index];
+    if (!workingDays.includes(dayName)) {
+      issues.push('Jour non travaillé');
+    }
+    if (activeConsultant) {
+      const day = startOfDay(date).getTime();
+      disponibilites
+        .filter((item) => item.consultant_id === activeConsultant.id)
+        .forEach((item) => {
+          const startDate = new Date(item.date_debut);
+          const endDate = new Date(item.date_fin);
+          if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return;
+          const start = startOfDay(startDate).getTime();
+          const end = startOfDay(endDate).getTime();
+          if (day >= start && day <= end) {
+            issues.push(`Indisponible (${item.type})`);
+          }
+        });
+    }
+    return issues;
+  };
+
+  const getConsultantLabel = (consultantId: string) => {
+    const found = consultants.find((item) => item.id === consultantId);
+    if (!found) return 'Non assigné';
+    return `${found.nom} ${found.prenom}`.trim();
+  };
+
+  const getAvailabilityLabel = (consultantId: string) => {
+    const today = startOfDay(new Date()).getTime();
+    const hasBlock = disponibilites.some((item) => {
+      if (item.consultant_id !== consultantId) return false;
+      const startDate = new Date(item.date_debut);
+      const endDate = new Date(item.date_fin);
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return false;
+      const start = startOfDay(startDate).getTime();
+      const end = startOfDay(endDate).getTime();
+      return today >= start && today <= end;
+    });
+    return hasBlock ? 'Indisponible' : 'Disponible';
+  };
+
+  const getCompetenceLevel = (consultant: Consultant | null, requiredIds?: string[]) => {
+    if (!consultant || !Array.isArray(consultant.competences) || !requiredIds?.length) return 0;
+    const levels = consultant.competences
+      .map((item) => ({
+        id: (item as { competence_id?: string }).competence_id || '',
+        niveau: Number((item as { niveau?: number }).niveau || 0),
+      }))
+      .filter((item) => requiredIds.includes(item.id))
+      .map((item) => item.niveau);
+    return levels.length ? Math.max(...levels) : 0;
+  };
+
+  const filteredConsultants = useMemo(() => {
+    if (!activePrestation?.competenceIds?.length) return consultants;
+    return consultants.filter((consultant) => getCompetenceLevel(consultant, activePrestation.competenceIds) > 0);
+  }, [activePrestation, consultants]);
+
+  const openAddReservation = (prestationId: string) => {
+    const target = prestations.find((item) => item.id === prestationId);
+    setActivePrestationId(prestationId);
+    setEditingReservationId(null);
+    setSelectedConsultantId('');
+    setSelectedSlots({});
+    setMode(target?.mode_defaut === 'distanciel' ? 'distanciel' : 'sur_site');
+    setAvecTrajet(false);
+    setCommentaire('');
+    setCalendarMonth(new Date());
+    setReservationModalOpen(true);
+  };
+
+  const openEditReservation = (reservation: ReservationDraft) => {
+    setActivePrestationId(reservation.prestationId);
+    setEditingReservationId(reservation.id);
+    setSelectedConsultantId(reservation.consultantId);
+    setSelectedSlots(reservation.slots);
+    setMode(reservation.mode);
+    setAvecTrajet(reservation.avec_trajet);
+    setCommentaire(reservation.commentaire);
+    setCalendarMonth(reservation.date_debut ? new Date(reservation.date_debut) : new Date());
+    setReservationModalOpen(true);
+  };
+
+  const toggleSlot = (dateKey: string, slot: 'morning' | 'afternoon') => {
+    if (!activeConsultant) return;
+    const date = parseDateKey(dateKey);
+    if (isDayBlocked(date).length > 0) return;
+    setSelectedSlots((prev) => {
+      const current = prev[dateKey] || { morning: false, afternoon: false };
+      const next = {
+        ...prev,
+        [dateKey]: {
+          ...current,
+          [slot]: !current[slot],
+        },
+      };
+      if (!next[dateKey].morning && !next[dateKey].afternoon) {
+        const copy = { ...next };
+        delete copy[dateKey];
+        return copy;
+      }
+      return next;
+    });
+  };
+
+  const selectedDaysCount = useMemo(() => {
+    return Object.values(selectedSlots).reduce((total, slots) => {
+      const count = (slots.morning ? 0.5 : 0) + (slots.afternoon ? 0.5 : 0);
+      return total + count;
+    }, 0);
+  }, [selectedSlots]);
+
+  const totalSelectedDays = selectedDaysCount + (avecTrajet ? 1 : 0);
+
+  const activeRemaining = useMemo(() => {
+    if (!activePrestation) return 0;
+    const planned = reservations
+      .filter((item) => item.prestationId === activePrestation.id)
+      .reduce((sum, item) => sum + item.nb_jours, 0);
+    return activePrestation.jours_prevus + activePrestation.jours_supplementaires - planned;
+  }, [activePrestation, reservations]);
+
+  const exceedsRemaining = activePrestation ? totalSelectedDays > activeRemaining : false;
+
+  const calendarDays = useMemo(() => {
+    const monthStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+    const startIndex = weekdayIndex(monthStart);
+    const start = new Date(monthStart);
+    start.setDate(monthStart.getDate() - startIndex);
+    return Array.from({ length: 42 }, (_, idx) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + idx);
+      return date;
+    });
+  }, [calendarMonth]);
+
+  const getReservationLabel = (reservation: ReservationDraft) => {
+    const keys = Object.keys(reservation.slots).sort();
+    if (keys.length === 0) return '';
+    if (keys.length === 1) {
+      const slot = reservation.slots[keys[0]];
+      if (slot.morning && slot.afternoon) return 'Journée complète';
+      if (slot.morning) return 'Matin';
+      if (slot.afternoon) return 'Après-midi';
+    }
+    return 'Multi-jours';
+  };
+
+  const getReservationDateRange = (reservation: ReservationDraft) => {
+    const keys = Object.keys(reservation.slots).sort();
+    if (keys.length === 0) return '-';
+    const start = parseDateKey(keys[0]);
+    const end = parseDateKey(keys[keys.length - 1]);
+    if (keys.length === 1) return formatDateFr(start);
+    return `${formatDateFr(start)} - ${formatDateFr(end)}`;
+  };
+
+  const getLevelStyle = (level: number) => {
+    if (level >= 3) return 'bg-green-100 text-green-700 border-green-200';
+    if (level === 2) return 'bg-orange-100 text-orange-700 border-orange-200';
+    if (level === 1) return 'bg-blue-100 text-blue-700 border-blue-200';
+    return 'bg-slate-100 text-slate-600 border-slate-200';
+  };
+
+  const handleConfirmReservation = () => {
+    if (!activePrestation) return;
+    if (totalSelectedDays <= 0 || exceedsRemaining) return;
+    const keys = Object.keys(selectedSlots).sort();
+    const dateDebut = keys.length ? keys[0] : '';
+
+    setReservations((prev) => {
+      if (editingReservationId) {
+        return prev.map((item) =>
+          item.id === editingReservationId
+            ? {
+                ...item,
+                prestationId: activePrestation.id,
+                consultantId: selectedConsultantId,
+                slots: selectedSlots,
+                date_debut: dateDebut,
+                nb_jours: totalSelectedDays,
+                mode,
+                avec_trajet: avecTrajet,
+                commentaire,
+              }
+            : item
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: Math.random().toString(36).slice(2, 10),
+          prestationId: activePrestation.id,
+          consultantId: selectedConsultantId,
+          slots: selectedSlots,
+          date_debut: dateDebut,
+          nb_jours: totalSelectedDays,
+          mode,
+          avec_trajet: avecTrajet,
+          commentaire,
+        },
+      ];
+    });
+
+    setReservationModalOpen(false);
+  };
+
+  const removeReservation = (reservationId: string) => {
+    setReservations((prev) => prev.filter((item) => item.id !== reservationId));
+  };
+
+  const addExtraPrestation = () => {
+    const label = newPrestationLabel.trim();
+    const days = Number(newPrestationDays);
+    if (!label || Number.isNaN(days)) return;
+    setPrestations((prev) => [
+      ...prev,
+      {
+        id: Math.random().toString(36).slice(2, 10),
+        label,
+        jours_prevus: days,
+        jours_supplementaires: 0,
+        annule: false,
+        forfait: false,
+        mode_defaut: newPrestationMode,
+        source: 'extra',
+      },
+    ]);
+    setNewPrestationLabel('');
+    setNewPrestationDays('1');
+    setNewPrestationMode('sur_site');
+    setPrestationModalOpen(false);
+  };
+
+  const renderPrestationCard = (item: PrestationDraft) => {
+    const prestationReservations = reservations.filter((r) => r.prestationId === item.id);
+    const planned = prestationReservations.reduce((sum, r) => sum + r.nb_jours, 0);
+    const total = item.jours_prevus + item.jours_supplementaires;
+    const remaining = total - planned;
+    const plannedPercent = total > 0 ? Math.min((planned / total) * 100, 100) : 0;
+    const remainingPercent = total > 0 ? Math.max(((total - planned) / total) * 100, 0) : 0;
+
+    return (
+      <div key={item.id} className="border border-slate-200 rounded-xl p-5 space-y-4 bg-white">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-semibold text-slate-900">{item.label}</h3>
+            {item.forfait && (
+              <Badge className="bg-indigo-100 text-indigo-700 border border-indigo-200">Forfait</Badge>
+            )}
+          </div>
+          <Button type="button" variant="outline" onClick={() => openAddReservation(item.id)}>
+            + Ajouter une réservation
+          </Button>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Badge className="bg-blue-100 text-blue-700 border border-blue-200">
+              Prévus : {total.toFixed(1)} j
+            </Badge>
+            <Badge className="bg-orange-100 text-orange-700 border border-orange-200">
+              Planifiés : {planned.toFixed(1)} j
+            </Badge>
+            <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-200">
+              Restants : {remaining.toFixed(1)} j
+            </Badge>
+          </div>
+          <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden flex">
+            <div className="bg-blue-400" style={{ width: `${Math.min((item.jours_prevus / (total || 1)) * 100, 100)}%` }}></div>
+            <div className="bg-orange-400" style={{ width: `${plannedPercent}%` }}></div>
+            <div className="bg-emerald-400" style={{ width: `${remainingPercent}%` }}></div>
+          </div>
+        </div>
+
+        {prestationReservations.length === 0 ? (
+          <p className="text-sm text-slate-500 italic">Aucune réservation pour cette prestation.</p>
+        ) : (
+          <div className="space-y-3">
+            {prestationReservations.map((reservation) => {
+              const consultant = consultants.find((c) => c.id === reservation.consultantId) || null;
+              const level = getCompetenceLevel(consultant, item.competenceIds);
+              return (
+                <div key={reservation.id} className="border border-slate-200 rounded-lg p-3 flex flex-col gap-3">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-900">{getConsultantLabel(reservation.consultantId)}</span>
+                        <span className={`inline-flex items-center justify-center w-6 h-6 text-xs font-semibold rounded-full border ${getLevelStyle(level)}`}>
+                          {level}
+                        </span>
+                      </div>
+                      <div className="text-sm text-slate-500">
+                        {getReservationDateRange(reservation)} · {getReservationLabel(reservation)}
+                      </div>
+                    </div>
+                    <div className="text-sm text-slate-600">
+                      {reservation.mode === 'sur_site' ? 'Sur site' : 'Distanciel'} · {reservation.nb_jours.toFixed(1)} j
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button type="button" size="sm" variant="outline" onClick={() => openEditReservation(reservation)}>
+                        Modifier
+                      </Button>
+                      <Button type="button" size="sm" variant="destructive" onClick={() => removeReservation(reservation.id)}>
+                        Supprimer
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-8">
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-slate-900">Planification des réservations</h2>
+        <p className="text-slate-500 mt-2">Affectez les consultants et planifiez les jours par prestation.</p>
+      </div>
+
+      <div className="space-y-6">
+        {packPrestations.length === 0 ? (
+          <p className="text-sm text-slate-500 italic">Aucune prestation issue des packs pour le moment.</p>
+        ) : (
+          packPrestations.map(renderPrestationCard)
+        )}
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Badge className="bg-orange-100 text-orange-700 border border-orange-200">Jours non vendus</Badge>
+            <span className="text-sm text-slate-600">Prestations hors pack ajoutées manuellement.</span>
+          </div>
+          <Button type="button" variant="outline" onClick={() => setPrestationModalOpen(true)}>
+            Ajouter une prestation
+          </Button>
+        </div>
+        {extraPrestations.length === 0 ? (
+          <p className="text-sm text-slate-500 italic">Aucune prestation hors pack.</p>
+        ) : (
+          extraPrestations.map(renderPrestationCard)
+        )}
+      </div>
+
+      <Dialog open={reservationModalOpen} onOpenChange={setReservationModalOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Réservation</DialogTitle>
+          </DialogHeader>
+          {!activePrestation ? (
+            <p className="text-sm text-slate-500">Sélectionnez une prestation.</p>
+          ) : (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Consultant</Label>
+                  <Select value={selectedConsultantId} onValueChange={setSelectedConsultantId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner un consultant" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredConsultants.map((consultant) => {
+                        const level = getCompetenceLevel(consultant, activePrestation?.competenceIds);
+                        const availability = getAvailabilityLabel(consultant.id);
+                        return (
+                          <SelectItem key={consultant.id} value={consultant.id}>
+                            {consultant.nom} {consultant.prenom} · Niveau {level} · {availability}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Mode</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant={mode === 'sur_site' ? 'default' : 'outline'}
+                      onClick={() => setMode('sur_site')}
+                    >
+                      Sur site
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={mode === 'distanciel' ? 'default' : 'outline'}
+                      onClick={() => setMode('distanciel')}
+                    >
+                      Distanciel
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Calendrier</Label>
+                  <p className="text-xs text-slate-500">Sélectionnez les demi-journées disponibles.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <span className="text-sm font-medium text-slate-700">
+                    {calendarMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                  </span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}>
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-7 gap-2 text-xs text-slate-500">
+                {dayLabels.map((label) => (
+                  <div key={label} className="text-center font-semibold">
+                    {label}
+                  </div>
+                ))}
+              </div>
+
+              <TooltipProvider>
+                <div className="grid grid-cols-7 gap-2">
+                  {calendarDays.map((date) => {
+                    const dateKey = toDateKey(date);
+                    const isCurrentMonth = date.getMonth() === calendarMonth.getMonth();
+                    const issues = activeConsultant ? isDayBlocked(date) : ['Sélectionnez un consultant'];
+                    const blocked = issues.length > 0;
+                    const slots = selectedSlots[dateKey] || { morning: false, afternoon: false };
+                    const bothSelected = slots.morning && slots.afternoon;
+
+                    const cell = (
+                      <div
+                        className={cn(
+                          'border rounded-lg p-1 min-h-[64px] flex flex-col justify-between text-xs',
+                          !isCurrentMonth && 'opacity-40',
+                          blocked ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-slate-200'
+                        )}
+                      >
+                        <div className="text-right text-[10px] text-slate-500">{date.getDate()}</div>
+                        <div className={cn('flex h-8 w-full', bothSelected && 'bg-indigo-100 rounded')}>
+                          <button
+                            type="button"
+                            onClick={() => toggleSlot(dateKey, 'morning')}
+                            className={cn(
+                              'flex-1 rounded-l border border-transparent',
+                              slots.morning && !bothSelected && 'bg-blue-100',
+                              blocked && 'cursor-not-allowed'
+                            )}
+                            disabled={blocked}
+                          ></button>
+                          <button
+                            type="button"
+                            onClick={() => toggleSlot(dateKey, 'afternoon')}
+                            className={cn(
+                              'flex-1 rounded-r border border-transparent',
+                              slots.afternoon && !bothSelected && 'bg-orange-100',
+                              blocked && 'cursor-not-allowed'
+                            )}
+                            disabled={blocked}
+                          ></button>
+                        </div>
+                      </div>
+                    );
+
+                    if (!blocked) return <div key={dateKey}>{cell}</div>;
+
+                    return (
+                      <Tooltip key={dateKey}>
+                        <TooltipTrigger asChild>{cell}</TooltipTrigger>
+                        <TooltipContent>
+                          <div className="text-xs">{issues.join(' · ')}</div>
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              </TooltipProvider>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Avec trajet</Label>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={avecTrajet}
+                      onCheckedChange={(value) => setAvecTrajet(Boolean(value))}
+                      className="h-4 w-4"
+                    />
+                    <span className="text-sm text-slate-600">Ajouter 1 jour (aller + retour)</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Jours sélectionnés</Label>
+                  <Input value={totalSelectedDays.toFixed(1)} readOnly />
+                </div>
+                <div className="space-y-2">
+                  <Label>Commentaire</Label>
+                  <Input value={commentaire} onChange={(event) => setCommentaire(event.target.value)} />
+                </div>
+              </div>
+
+              {exceedsRemaining && (
+                <div className="text-sm text-red-600">
+                  Vous dépassez le nombre de jours restants
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setReservationModalOpen(false)}>
+              Annuler
+            </Button>
+            <Button type="button" onClick={handleConfirmReservation} disabled={totalSelectedDays <= 0 || exceedsRemaining}>
+              Confirmer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={prestationModalOpen} onOpenChange={setPrestationModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nouvelle prestation</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Label</Label>
+              <Input value={newPrestationLabel} onChange={(event) => setNewPrestationLabel(event.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Jours prévus</Label>
+              <Input type="number" min={0.5} step={0.5} value={newPrestationDays} onChange={(event) => setNewPrestationDays(event.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Mode par défaut</Label>
+              <Select value={newPrestationMode} onValueChange={(value) => setNewPrestationMode(value as 'sur_site' | 'distanciel')}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sur_site">Sur site</SelectItem>
+                  <SelectItem value="distanciel">Distanciel</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPrestationModalOpen(false)}>
+              Annuler
+            </Button>
+            <Button type="button" onClick={addExtraPrestation}>
+              Ajouter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1349,6 +2269,45 @@ function StepSuccess({
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
