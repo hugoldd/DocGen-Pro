@@ -33,10 +33,14 @@ function LoginPage() {
     }, ERROR_TIMEOUT_MS);
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const ok = login(loginId.trim(), password);
-    if (!ok) {
+    try {
+      const ok = await login(loginId.trim(), password);
+      if (!ok) {
+        showError();
+      }
+    } catch (error) {
       showError();
     }
   };
@@ -79,16 +83,16 @@ function LoginPage() {
                 className="border-slate-800 bg-slate-900 text-slate-100 placeholder:text-slate-500"
               />
             </div>
-            {error && (
-              <div className="flex items-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-                <AlertCircle className="h-4 w-4" />
-                <span>Identifiants incorrects</span>
-              </div>
-            )}
             <Button type="submit" className="w-full">
               Se connecter
             </Button>
           </form>
+          {error && (
+            <div className="mt-4 flex items-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+              <AlertCircle className="h-4 w-4" />
+              <span>Identifiants incorrects</span>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

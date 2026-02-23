@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard,
   FileText,
+  Tag,
+  Layers,
   Settings,
   PlayCircle,
   History,
@@ -11,22 +13,16 @@ import {
   Bell,
   ChevronRight,
   Search,
-  User
+  User,
+  Users
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useApp } from '../context/AppContext';
+import { useCompetences } from '../hooks/useCompetences';
+import { usePrestations } from '../hooks/usePrestations';
+import { usePacks } from '../hooks/usePacks';
 
 export function Sidebar() {
-  const navItems = [
-    { icon: LayoutDashboard, label: 'Tableau de bord', to: '/' },
-    { icon: FileText, label: 'Bibliothèque de templates', to: '/templates' },
-    { icon: Settings, label: 'Configuration projets', to: '/configuration' },
-    { icon: Menu, label: 'Dictionnaire de variables', to: '/variables' },
-    { icon: PlayCircle, label: 'Prise en charge client', to: '/workflow' },
-    { icon: History, label: 'Historique', to: '/history' },
-    { icon: CalendarDays, label: 'Planning', to: '/planning' },
-  ];
-
   return (
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen fixed left-0 top-0 z-20 shadow-xl">
       <div className="h-16 flex items-center px-6 border-b border-slate-800">
@@ -37,10 +33,156 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 py-6 px-3 space-y-1">
-        {navItems.map((item) => (
+        <NavLink
+          to="/"
+          className={({ isActive }) =>
+            cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+              isActive
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20"
+                : "hover:bg-slate-800 hover:text-white"
+            )
+          }
+        >
+          <LayoutDashboard className="w-5 h-5" />
+          <span className="font-medium text-sm">Tableau de bord</span>
+        </NavLink>
+
+        <div className="pt-4">
+          <div className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Paramétrage DocGen
+          </div>
+          <div className="mt-2 space-y-1">
+            <NavLink
+              to="/templates"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                  isActive
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20"
+                    : "hover:bg-slate-800 hover:text-white"
+                )
+              }
+            >
+              <FileText className="w-5 h-5" />
+              <span className="font-medium text-sm">Bibliothèque de templates</span>
+            </NavLink>
+            <NavLink
+              to="/configuration"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                  isActive
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20"
+                    : "hover:bg-slate-800 hover:text-white"
+                )
+              }
+            >
+              <Settings className="w-5 h-5" />
+              <span className="font-medium text-sm">Configuration projets</span>
+            </NavLink>
+            <NavLink
+              to="/variables"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                  isActive
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20"
+                    : "hover:bg-slate-800 hover:text-white"
+                )
+              }
+            >
+              <Menu className="w-5 h-5" />
+              <span className="font-medium text-sm">Dictionnaire de variables</span>
+            </NavLink>
+          </div>
+        </div>
+
+        <div className="pt-4">
+          <div className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Paramétrage Ressources
+          </div>
+          <div className="mt-2 space-y-1">
+            <NavLink
+              to="/parametrage/competences"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                  isActive
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20"
+                    : "hover:bg-slate-800 hover:text-white"
+                )
+              }
+            >
+              <Tag className="w-5 h-5" />
+              <span className="font-medium text-sm">Compétences</span>
+            </NavLink>
+            <NavLink
+              to="/parametrage/prestations"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                  isActive
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20"
+                    : "hover:bg-slate-800 hover:text-white"
+                )
+              }
+            >
+              <FileText className="w-5 h-5" />
+              <span className="font-medium text-sm">Prestations</span>
+            </NavLink>
+            <NavLink
+              to="/parametrage/packs"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                  isActive
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20"
+                    : "hover:bg-slate-800 hover:text-white"
+                )
+              }
+            >
+              <Layers className="w-5 h-5" />
+              <span className="font-medium text-sm">Packs</span>
+            </NavLink>
+            <NavLink
+              to="/parametrage/consultants"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                  isActive
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20"
+                    : "hover:bg-slate-800 hover:text-white"
+                )
+              }
+            >
+              <User className="w-5 h-5" />
+              <span className="font-medium text-sm">Consultants</span>
+            </NavLink>
+            <NavLink
+              to="/parametrage/equipes"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                  isActive
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20"
+                    : "hover:bg-slate-800 hover:text-white"
+                )
+              }
+            >
+              <Users className="w-5 h-5" />
+              <span className="font-medium text-sm">Équipes</span>
+            </NavLink>
+          </div>
+        </div>
+
+        <div className="pt-4">
+          <div className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Opérationnel
+          </div>
+          <div className="mt-2 space-y-1">
           <NavLink
-            key={item.to}
-            to={item.to}
+            to="/clients"
             className={({ isActive }) =>
               cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
@@ -50,10 +192,67 @@ export function Sidebar() {
               )
             }
           >
-            <item.icon className="w-5 h-5" />
-            <span className="font-medium text-sm">{item.label}</span>
+            <Users className="w-5 h-5" />
+            <span className="font-medium text-sm">Clients</span>
           </NavLink>
-        ))}
+          <NavLink
+            to="/workflow"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                isActive
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20"
+                  : "hover:bg-slate-800 hover:text-white"
+              )
+            }
+          >
+            <PlayCircle className="w-5 h-5" />
+            <span className="font-medium text-sm">Prise en charge client</span>
+          </NavLink>
+          <NavLink
+            to="/history"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                isActive
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20"
+                  : "hover:bg-slate-800 hover:text-white"
+              )
+            }
+          >
+            <History className="w-5 h-5" />
+            <span className="font-medium text-sm">Historique</span>
+          </NavLink>
+          <NavLink
+            to="/planning/docgen"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                isActive
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20"
+                  : "hover:bg-slate-800 hover:text-white"
+              )
+            }
+          >
+            <CalendarDays className="w-5 h-5" />
+            <span className="font-medium text-sm">Planning envois</span>
+          </NavLink>
+          <NavLink
+            to="/planning/projets"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                isActive
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20"
+                  : "hover:bg-slate-800 hover:text-white"
+              )
+            }
+          >
+            <CalendarDays className="w-5 h-5" />
+            <span className="font-medium text-sm">Planning projets</span>
+          </NavLink>
+          </div>
+        </div>
       </nav>
 
     </aside>
@@ -64,6 +263,9 @@ export function Header() {
   const location = useLocation();
   const navigate = useNavigate();
   const { records, templates, projectTypes } = useApp();
+  const { items: competences } = useCompetences();
+  const { items: prestations } = usePrestations();
+  const { items: packs } = usePacks();
   const userInitials = 'TD';
   const userName = 'Thomas Dubois';
   const userRole = 'Admin';
@@ -160,7 +362,7 @@ export function Header() {
             type: 'email-imminent',
             label: 'Email imminent',
             description: `${email.label} — ${record.clientName}`,
-            route: '/planning',
+            route: '/planning/docgen',
           });
         } else if (emailDate > soon && emailDate <= week) {
           items.push({
@@ -168,7 +370,7 @@ export function Header() {
             type: 'email-week',
             label: 'Email cette semaine',
             description: `${email.label} — ${record.clientName}`,
-            route: '/planning',
+            route: '/planning/docgen',
           });
         }
       });
@@ -183,7 +385,7 @@ export function Header() {
             type: 'doc-imminent',
             label: 'Document à générer',
             description: `${doc.label} — ${record.clientName}`,
-            route: '/planning',
+            route: '/planning/docgen',
           });
         }
       });
@@ -276,6 +478,39 @@ export function Header() {
     return results.slice(0, 3);
   }, [records, normalizedQuery, canSearch]);
 
+  const competencesResults = useMemo(() => {
+    if (!canSearch) return [];
+    return competences
+      .filter(
+        (item) =>
+          (item.label || '').toLowerCase().includes(normalizedQuery) ||
+          (item.categorie || '').toLowerCase().includes(normalizedQuery)
+      )
+      .slice(0, 3);
+  }, [competences, normalizedQuery, canSearch]);
+
+  const prestationsResults = useMemo(() => {
+    if (!canSearch) return [];
+    return prestations
+      .filter(
+        (item) =>
+          (item.label || '').toLowerCase().includes(normalizedQuery) ||
+          (item.type || '').toLowerCase().includes(normalizedQuery)
+      )
+      .slice(0, 3);
+  }, [prestations, normalizedQuery, canSearch]);
+
+  const packsResults = useMemo(() => {
+    if (!canSearch) return [];
+    return packs
+      .filter(
+        (item) =>
+          (item.label || '').toLowerCase().includes(normalizedQuery) ||
+          (item.description || '').toLowerCase().includes(normalizedQuery)
+      )
+      .slice(0, 3);
+  }, [packs, normalizedQuery, canSearch]);
+
   const contactResults = useMemo(() => {
     if (!canSearch) return [];
     const seen = new Set<string>();
@@ -304,6 +539,9 @@ export function Header() {
       templateResults.length +
       projectTypeResults.length +
       planningResults.length +
+      competencesResults.length +
+      prestationsResults.length +
+      packsResults.length +
       contactResults.length >
     0;
 
@@ -420,11 +658,65 @@ export function Header() {
                     {planningResults.map((email, idx) => (
                       <button
                         key={`${email.label}-${idx}`}
-                        onClick={() => handleResultClick('/planning')}
+                        onClick={() => handleResultClick('/planning/docgen')}
                         className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50"
                       >
                         <div className="font-medium text-slate-900">{email.label}</div>
                         <div className="text-xs text-slate-500">{email.clientName}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {competencesResults.length > 0 && (
+                  <div className="border-t border-slate-100">
+                    <div className="px-4 pt-3 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-2">
+                      <Tag className="w-4 h-4 text-slate-400" />
+                      Compétences
+                    </div>
+                    {competencesResults.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => handleResultClick('/parametrage/competences')}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50"
+                      >
+                        <div className="font-medium text-slate-900">{item.label}</div>
+                        <div className="text-xs text-slate-500">{item.categorie}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {prestationsResults.length > 0 && (
+                  <div className="border-t border-slate-100">
+                    <div className="px-4 pt-3 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-slate-400" />
+                      Prestations
+                    </div>
+                    {prestationsResults.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => handleResultClick('/parametrage/prestations')}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50"
+                      >
+                        <div className="font-medium text-slate-900">{item.label}</div>
+                        <div className="text-xs text-slate-500">{item.type || '-'}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {packsResults.length > 0 && (
+                  <div className="border-t border-slate-100">
+                    <div className="px-4 pt-3 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-slate-400" />
+                      Packs
+                    </div>
+                    {packsResults.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => handleResultClick('/parametrage/packs')}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50"
+                      >
+                        <div className="font-medium text-slate-900">{item.label}</div>
+                        <div className="text-xs text-slate-500">{item.description || '-'}</div>
                       </button>
                     ))}
                   </div>
@@ -529,3 +821,6 @@ export default function DashboardLayout() {
     </div>
   );
 }
+
+
+

@@ -7,14 +7,12 @@ import LoginPage from './pages/LoginPage';
 function AuthGate() {
   const { isAuthenticated } = useAuth();
 
-  if (!isAuthenticated) {
-    return <LoginPage />;
-  }
-
-  return (
+  return isAuthenticated ? (
     <AppProvider>
       <RouterProvider router={router} />
     </AppProvider>
+  ) : (
+    <LoginPage />
   );
 }
 

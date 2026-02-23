@@ -16,6 +16,7 @@ import {
 import { useNavigate, useParams } from 'react-router';
 import { cn } from '../../../lib/utils';
 import { useApp } from '../../context/AppContext';
+import { usePacks } from '../../hooks/usePacks';
 import type {
   ProjectOption,
   PrerequisiteQuestion,
@@ -46,6 +47,7 @@ type ProjectForm = {
   emailSchedule: EmailScheduleRule[];
   documentSchedule: DocumentScheduleRule[];
   questionSchedule: QuestionScheduleRule[];
+  pack_ids: string[];
 };
 
 const STEPS = [
@@ -73,6 +75,7 @@ const emptyForm: ProjectForm = {
   emailSchedule: [],
   documentSchedule: [],
   questionSchedule: [],
+  pack_ids: [],
 };
 
 const toId = (value: string) =>
@@ -107,6 +110,7 @@ export default function ProjectWizard() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { projectTypes, templates, addProjectType, updateProjectType } = useApp();
+  const { items: packs } = usePacks();
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<ProjectForm>(emptyForm);
   const [newTag, setNewTag] = useState('');
@@ -150,6 +154,7 @@ export default function ProjectWizard() {
           requiresAction: s.requiresAction ?? false,
           generateOnWorkflow: s.generateOnWorkflow ?? false,
         })),
+        pack_ids: existingProject.pack_ids ?? [],
       });
     }
   }, [existingProject, isEditMode]);
@@ -241,15 +246,9 @@ export default function ProjectWizard() {
   const updateOptionLabel = (idValue: string, label: string) =>
     setForm((prev) => ({
       ...prev,
-      options: prev.options.map((opt) => {
-        if (opt.id !== idValue) return opt;
-        const generated = toId(label);
-        return {
-          ...opt,
-          label,
-          id: generated || opt.id,
-        };
-      }),
+      options: prev.options.map((opt) =>
+        opt.id === idValue ? { ...opt, label } : opt
+      ),
     }));
 
   const removeOption = (idValue: string) =>
@@ -284,15 +283,9 @@ export default function ProjectWizard() {
   const updateQuestionLabel = (idValue: string, label: string) =>
     setForm((prev) => ({
       ...prev,
-      questions: prev.questions.map((q) => {
-        if (q.id !== idValue) return q;
-        const generated = toId(label);
-        return {
-          ...q,
-          label,
-          id: generated || q.id,
-        };
-      }),
+      questions: prev.questions.map((q) =>
+        q.id === idValue ? { ...q, label } : q
+      ),
     }));
 
   const removeQuestion = (idValue: string) =>
@@ -475,6 +468,15 @@ export default function ProjectWizard() {
       ...prev,
       questionSchedule: prev.questionSchedule.filter((s) => s.id !== idValue),
     }));
+
+  const togglePack = (packId: string) => {
+    setForm((prev) => ({
+      ...prev,
+      pack_ids: prev.pack_ids.includes(packId)
+        ? prev.pack_ids.filter((idValue) => idValue !== packId)
+        : [...prev.pack_ids, packId],
+    }));
+  };
 
   const docTemplates = templates.filter((t) => t.type !== 'EMAIL');
   const emailTemplates = templates.filter((t) => t.type === 'EMAIL');
@@ -1044,6 +1046,37 @@ export default function ProjectWizard() {
               <div className="text-center mb-8">
                 <h2 className="text-2xl font-bold text-slate-900">Planning</h2>
                 <p className="text-slate-500 mt-2">Planifiez les envois et actions associées.</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-semibold text-slate-900">Packs de prestations associés</h3>
+                </div>
+                {packs.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 px-6 py-6 text-center text-sm text-slate-400">
+                    Aucun pack disponible.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {packs.map((pack) => (
+                      <label
+                        key={pack.id}
+                        className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 cursor-pointer hover:bg-slate-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={form.pack_ids.includes(pack.id)}
+                          onChange={() => togglePack(pack.id)}
+                          className="rounded accent-indigo-600"
+                        />
+                        <div>
+                          <div className="text-sm font-medium text-slate-800">{pack.label}</div>
+                          <div className="text-xs text-slate-500">{pack.description || 'Sans description'}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4">

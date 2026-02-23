@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { CalendarDays, CalendarOff, FileText, HelpCircle, Mail, CheckCheck } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useApp } from '../../context/AppContext';
@@ -69,7 +69,7 @@ const getPeriodLabel = (filter: PeriodFilter) => {
   return 'Passés';
 };
 
-export default function PlanningPage() {
+export default function PlanningDocGenPage() {
   const navigate = useNavigate();
   const {
     projectTypes,

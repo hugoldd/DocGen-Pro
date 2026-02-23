@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router';
 import { useApp } from '../../context/AppContext';
+import { useProjets } from '../../hooks/useProjets';
 import type { GenerationRecord, GeneratedFile, TemplateType } from '../../types';
 import PlanningView from '../../components/PlanningView';
 import {
@@ -50,8 +51,9 @@ const escapeCsv = (value: string) => {
 export default function HistoryPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { projectTypes, templates, getRecords, deleteRecord } = useApp();
-  const records = getRecords();
+  const { projectTypes, templates } = useApp();
+  const { getDeduped, deleteRecord } = useProjets();
+  const records = useMemo(() => getDeduped(), [getDeduped]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [projectFilter, setProjectFilter] = useState('');

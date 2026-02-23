@@ -96,7 +96,7 @@ export function buildGenerationPlan(
     const finalBaseName = baseName.trim()
       ? baseName
       : `${clientValues.nom_client || 'Document'} - ${template.name}`
-        .replace(/[^a-zA-Z0-9\s\-_éèêëàâùûüîïôçÉÈÊËÀÂÙÛÜÎÏÔÇ]/g, '')
+        .replace(/[^a-zA-Z0-9\s\-_éèêëàâùûüîïôçÉÈÊËÀÙÛÜÎÏÔÇ]/g, '')
         .trim();
     const name = `${finalBaseName}${extensionByType[template.type]}`;
     const destinationPath = resolveVariables(rule.destinationPath, clientValues);

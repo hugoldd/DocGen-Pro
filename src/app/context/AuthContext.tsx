@@ -1,41 +1,55 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import type { RecordModel } from 'pocketbase';
+import pb from '../../lib/pb';
 
 interface AuthContextValue {
+  user: RecordModel | null;
   isAuthenticated: boolean;
-  login: (id: string, pwd: string) => boolean;
+  login: (id: string, pwd: string) => boolean | Promise<boolean>;
+  logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const AUTH_STORAGE_KEY = 'docgen_auth';
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    () => sessionStorage.getItem(AUTH_STORAGE_KEY) === 'true'
-  );
+  const [user, setUser] = useState<RecordModel | null>(pb.authStore.model ?? null);
+  const [isAuthenticated, setIsAuthenticated] = useState(pb.authStore.isValid);
 
-  const loginValue = useMemo(() => {
-    const envLogin = import.meta.env.VITE_AUTH_LOGIN;
-    const envPassword = import.meta.env.VITE_AUTH_PASSWORD;
+  useEffect(() => {
+    const unsubscribe = pb.authStore.onChange(() => {
+      setUser(pb.authStore.model ?? null);
+      setIsAuthenticated(pb.authStore.isValid);
+    }, true);
 
-    return (id: string, pwd: string) => {
-      if (!envLogin || !envPassword) {
-        console.warn(
-          'Auth config missing: define VITE_AUTH_LOGIN and VITE_AUTH_PASSWORD in .env.local.'
-        );
+    return unsubscribe;
+  }, []);
+
+  const login = useMemo(() => {
+    return async (id: string, pwd: string) => {
+      try {
+        await pb.collection('users').authWithPassword(id, pwd);
+        setUser(pb.authStore.model ?? null);
+        setIsAuthenticated(pb.authStore.isValid);
+        return true;
+      } catch (error) {
+        pb.authStore.clear();
+        setUser(null);
+        setIsAuthenticated(false);
         return false;
       }
-      if (id === envLogin && pwd === envPassword) {
-        sessionStorage.setItem(AUTH_STORAGE_KEY, 'true');
-        setIsAuthenticated(true);
-        return true;
-      }
-      return false;
+    };
+  }, []);
+
+  const logout = useMemo(() => {
+    return () => {
+      pb.authStore.clear();
+      setUser(null);
+      setIsAuthenticated(false);
     };
   }, []);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login: loginValue }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
